@@ -569,27 +569,35 @@ async function handleCallback(callbackQuery) {
 // ==========================
 // Webhooks
 // ==========================
-app.post(`/telegram/webhook/${TELEGRAM_SECRET}`, async (req, res) => {
-  try {
-    const update = req.body;
+app.post(`/telegram/webhook/${TELEGRAM_SECRET}`, (req, res) => {
+  // ✅ balas cepat biar Telegram gak timeout
+  res.json({ ok: true });
 
-    if (update.callback_query) {
-      const chatId = update.callback_query.message?.chat?.id;
-      if (chatId) await upsertUser(chatId);
-      await handleCallback(update.callback_query);
-      return res.json({ ok: true });
+  // proses di belakang
+  (async () => {
+    try {
+      const update = req.body;
+
+      if (update.callback_query) {
+        const chatId = update.callback_query.message?.chat?.id;
+        if (chatId) await upsertUser(chatId);
+        await handleCallback(update.callback_query);
+        return;
+      }
+
+      const msg = update.message;
+      if (!msg) return;
+
+      const chatId = msg.chat?.id;
+      if (!chatId) return;
+
+      await upsertUser(chatId);
+      await handleText(chatId, msg.text);
+    } catch (e) {
+      console.log("Telegram webhook bg error:", e);
     }
-
-    const msg = update.message;
-    if (!msg) return res.json({ ok: true });
-
-    const chatId = msg.chat?.id;
-    if (!chatId) return res.json({ ok: true });
-
-    await upsertUser(chatId);
-    await handleText(chatId, msg.text);
-    res.json({ ok: true });
-  } catch (e) {
+  })();
+});
     console.log("Telegram webhook error:", e);
     res.json({ ok: true });
   }
