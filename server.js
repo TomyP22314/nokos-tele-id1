@@ -1,62 +1,71 @@
+import express from "express";
+import fetch from "node-fetch";
+import { google } from "googleapis";
+
 /**
- * Premium Telegram Shop Bot (Legal Digital Products)
- * - Welcome animation + Premium dashboard (total users + completed tx auto from Sheets)
- * - Stock from Google Sheets tabs: ID1..ID8 (rows after header = items)
- * - READY only: show groups with stock > 0
- * - Create Pakasir QRIS invoice + send QR image + cancel button
- * - Pakasir webhook "completed" -> deliver 1 item -> delete row from stock sheet (so it won't show again)
+ * =========================
+ *  ENV yang WAJIB di Render
+ * =========================
+ * ADMIN_CHAT_ID              -> chat id admin (angka)
+ * BOT_TOKEN                  -> token bot telegram
+ * GOOGLE_SERVICE_ACCOUNT_JSON-> json service account (1 baris, lengkap)
+ * SHEET_ID                   -> id spreadsheet
+ * SHEET_ORDERS_TAB           -> nama tab orders, contoh: Orders
+ * WEBHOOK_SECRET             -> secret telegram webhook path, contoh: gomsecret123
  *
- * REQUIRED SHEETS (tabs):
- * - ID1, ID2, ... ID8  (stock tabs)
- * - Orders            (orders tab)
- * - Users             (users tab)
+ * PAKASIR_API_KEY            -> api key pakasir
+ * PAKASIR_SLUG               -> slug project pakasir (dari dashboard)
+ * PAKASIR_WEBHOOK_SECRET     -> secret untuk webhook pakasir (contoh: whsec_xxx)
+ *
+ * OPTIONAL:
+ * WELCOME_ANIM_FILE_ID       -> file_id animasi welcome (boleh kosong)
+ *
+ * CATATAN:
+ * - Sheet stok: ID1..ID8
+ * - Header stok (baris 1): User ID | Username | Nama | Nomor HP | 2FA | Email Recovery
  */
 
-import express from "express";
-import { google } from "googleapis";
-import QRCode from "qrcode";
+const {
+  ADMIN_CHAT_ID,
+  BOT_TOKEN,
+  GOOGLE_SERVICE_ACCOUNT_JSON,
+  SHEET_ID,
+  SHEET_ORDERS_TAB,
+  WEBHOOK_SECRET,
 
-const app = express();
-app.use(express.json({ limit: "2mb" }));
+  PAKASIR_API_KEY,
+  PAKASIR_SLUG,
+  PAKASIR_WEBHOOK_SECRET,
 
-// =======================
-// ENV (Render Environment)
-// =======================
-const REQUIRED_ENV = [
-  "BOT_TOKEN",
-  "WEBHOOK_SECRET", // telegram webhook secret (path segment)
-  "GOOGLE_SERVICE_ACCOUNT_JSON",
-  "SHEET_ID",
-  "SHEET_ORDERS_TAB", // "Orders"
-  "PAKASIR_SLUG",
-  "PAKASIR_API_KEY",
-  "PAKASIR_WEBHOOK_SECRET", // for /pakasir/webhook/<secret>
-  "WELCOME_ANIM_FILE_ID", // your animation file_id
-];
+  WELCOME_ANIM_FILE_ID,
+} = process.env;
 
 function assertEnv() {
-  const missing = REQUIRED_ENV.filter((k) => !process.env[k] || String(process.env[k]).trim() === "");
+  const required = [
+    "ADMIN_CHAT_ID",
+    "BOT_TOKEN",
+    "GOOGLE_SERVICE_ACCOUNT_JSON",
+    "SHEET_ID",
+    "SHEET_ORDERS_TAB",
+    "WEBHOOK_SECRET",
+    "PAKASIR_API_KEY",
+    "PAKASIR_SLUG",
+    "PAKASIR_WEBHOOK_SECRET",
+  ];
+  const missing = required.filter((k) => !process.env[k] || String(process.env[k]).trim() === "");
   if (missing.length) throw new Error("Missing ENV: " + missing.join(", "));
 }
 assertEnv();
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const TELEGRAM_SECRET = process.env.WEBHOOK_SECRET;
+const app = express();
 
-const SHEET_ID = process.env.SHEET_ID;
-const ORDERS_TAB = process.env.SHEET_ORDERS_TAB; // Orders
-const USERS_TAB = "Users"; // fixed
+// Telegram & Pakasir biasanya kirim JSON
+app.use(express.json({ limit: "2mb" }));
 
-const PAKASIR_SLUG = process.env.PAKASIR_SLUG;
-const PAKASIR_API_KEY = process.env.PAKASIR_API_KEY;
-const PAKASIR_WEBHOOK_SECRET = process.env.PAKASIR_WEBHOOK_SECRET;
+const PORT = process.env.PORT || 3000;
 
-const WELCOME_ANIM_FILE_ID = process.env.WELCOME_ANIM_FILE_ID;
-
-// ============
-// PRICE LIST
-// ============
-const PRICE_BY_GROUP = {
+const ID_LIST = ["ID1", "ID2", "ID3", "ID4", "ID5", "ID6", "ID7", "ID8"];
+const PRICE_MAP = {
   ID1: 28000,
   ID2: 25000,
   ID3: 23000,
@@ -66,51 +75,82 @@ const PRICE_BY_GROUP = {
   ID7: 10000,
   ID8: 9000,
 };
-const GROUPS = Object.keys(PRICE_BY_GROUP);
 
-// =================
-// Google Sheets Auth
-// =================
-function getServiceAccount() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  return JSON.parse(raw);
+// =========================
+// Google Sheets client
+// =========================
+function getGoogleClient() {
+  const creds = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON);
+  const auth = new google.auth.JWT(
+    creds.client_email,
+    null,
+    creds.private_key,
+    ["https://www.googleapis.com/auth/spreadsheets"]
+  );
+  return google.sheets({ version: "v4", auth });
 }
-const sa = getServiceAccount();
-const jwt = new google.auth.JWT({
-  email: sa.client_email,
-  key: sa.private_key,
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
-const sheets = google.sheets({ version: "v4", auth: jwt });
 
-// =================
-// Helpers
-// =================
-function nowISO() {
-  return new Date().toISOString();
+async function sheetsGet(range) {
+  const sheets = getGoogleClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range,
+  });
+  return res.data.values || [];
 }
+
+async function sheetsAppend(range, values) {
+  const sheets = getGoogleClient();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SHEET_ID,
+    range,
+    valueInputOption: "RAW",
+    requestBody: { values },
+  });
+}
+
+async function sheetsUpdate(range, values) {
+  const sheets = getGoogleClient();
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range,
+    valueInputOption: "RAW",
+    requestBody: { values },
+  });
+}
+
+async function sheetsClear(range) {
+  const sheets = getGoogleClient();
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId: SHEET_ID,
+    range,
+  });
+}
+
+// Helper: ubah angka ke format rupiah
 function rupiah(n) {
   return "Rp " + Number(n).toLocaleString("id-ID");
 }
-function escapeHtml(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
 
-async function tg(method, payload) {
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+// =========================
+// Telegram API helper
+// =========================
+async function tg(method, body) {
+  const url = `https://api.telegram.org/bot${BOT_TOKEN}/${method}`;
+  const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!data.ok) console.log("Telegram API error:", data);
-  return data;
+  const json = await res.json();
+  if (!json.ok) {
+    console.log("TG error:", json);
+    throw new Error(json.description || "Telegram API error");
+  }
+  return json.result;
 }
 
-async function sendMessage(chatId, text, extra = {}) {
+async function sendText(chatId, text, extra = {}) {
   return tg("sendMessage", {
     chat_id: chatId,
     text,
@@ -120,529 +160,542 @@ async function sendMessage(chatId, text, extra = {}) {
   });
 }
 
-async function sendQRPhoto(chatId, qrString, caption, extra = {}) {
-  // Generate QR PNG buffer
-  const pngBuffer = await QRCode.toBuffer(qrString, {
-    type: "png",
-    width: 800,
-    margin: 1,
-    errorCorrectionLevel: "M",
-  });
-
-  // Telegram sendPhoto multipart/form-data
-  const form = new FormData();
-  form.append("chat_id", String(chatId));
-  form.append("caption", caption);
-  form.append("parse_mode", "HTML");
-  form.append("photo", new Blob([pngBuffer], { type: "image/png" }), "qris.png");
-  if (extra.reply_markup) form.append("reply_markup", JSON.stringify(extra.reply_markup));
-
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-    method: "POST",
-    body: form,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!data.ok) console.log("Telegram sendPhoto error:", data);
-  return data;
-}
-
-// ==========================
-// Google Sheets basic ops
-// ==========================
-async function sheetGet(range) {
-  const r = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range,
-  });
-  return r.data.values || [];
-}
-async function sheetAppend(range, values) {
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID,
-    range,
-    valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values: [values] },
-  });
-}
-async function sheetUpdate(range, values) {
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range,
-    valueInputOption: "RAW",
-    requestBody: { values: [values] },
-  });
-}
-async function getSheetIdByTitle(title) {
-  const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
-  const found = meta.data.sheets?.find((s) => s.properties?.title === title);
-  return found?.properties?.sheetId;
-}
-async function sheetDeleteRowByTabTitle(tabTitle, rowIndexZeroBased) {
-  const sheetIdNum = await getSheetIdByTitle(tabTitle);
-  if (typeof sheetIdNum !== "number") throw new Error(`Sheet tab not found: ${tabTitle}`);
-
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SHEET_ID,
-    requestBody: {
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId: sheetIdNum,
-              dimension: "ROWS",
-              startIndex: rowIndexZeroBased,
-              endIndex: rowIndexZeroBased + 1,
-            },
-          },
-        },
-      ],
-    },
+async function sendAnim(chatId, fileId, caption, extra = {}) {
+  return tg("sendAnimation", {
+    chat_id: chatId,
+    animation: fileId,
+    caption,
+    parse_mode: "HTML",
+    ...extra,
   });
 }
 
-// ==========================
-// Users tracking (Users tab)
-// ==========================
-async function ensureUsersHeader() {
-  const values = await sheetGet(`${USERS_TAB}!A1:C1`).catch(() => []);
-  const header = values[0] || [];
-  const want = ["chat_id", "first_seen", "last_seen"];
-  const ok = want.every((v, i) => String(header[i] || "").trim() === v);
-  if (!ok) await sheetUpdate(`${USERS_TAB}!A1:C1`, want);
+// =========================
+// Data / Orders logic
+// =========================
+function nowISO() {
+  return new Date().toISOString();
 }
 
-async function upsertUser(chatId) {
-  await ensureUsersHeader();
-  const values = await sheetGet(`${USERS_TAB}!A:C`).catch(() => []);
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][0] || "") === String(chatId)) {
-      const rowNum = i + 1; // 1-based
-      const firstSeen = values[i][1] || nowISO();
-      await sheetUpdate(`${USERS_TAB}!A${rowNum}:C${rowNum}`, [String(chatId), firstSeen, nowISO()]);
-      return;
-    }
-  }
-  await sheetAppend(`${USERS_TAB}!A:C`, [String(chatId), nowISO(), nowISO()]);
+function makeOrderId() {
+  return "ORD-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
 }
 
-async function getTotalUsers() {
-  const values = await sheetGet(`${USERS_TAB}!A:A`).catch(() => []);
-  return Math.max(0, values.length - 1); // minus header
-}
-
-// ==========================
-// Orders tracking (Orders tab)
-// ==========================
 async function ensureOrdersHeader() {
-  const values = await sheetGet(`${ORDERS_TAB}!A1:G1`).catch(() => []);
-  const header = values[0] || [];
-  const want = ["order_id", "chat_id", "group_id", "amount", "status", "created_at", "completed_at"];
-  const ok = want.every((v, i) => String(header[i] || "").trim() === v);
-  if (!ok) await sheetUpdate(`${ORDERS_TAB}!A1:G1`, want);
+  // Orders sheet columns:
+  // A: order_id
+  // B: chat_id
+  // C: username
+  // D: product_id (ID1..ID8)
+  // E: price
+  // F: status (pending/paid/canceled/failed)
+  // G: invoice_id (from pakasir)
+  // H: invoice_url
+  // I: created_at
+  // J: paid_at
+  // K: delivered_at
+  // L: stock_sheet (IDx)
+  // M: stock_row (row number in that sheet)
+  // N: stock_payload (string JSON)
+  const headerRange = `${SHEET_ORDERS_TAB}!A1:N1`;
+  const row = await sheetsGet(headerRange);
+  if (row.length === 0) {
+    await sheetsUpdate(headerRange, [[
+      "order_id","chat_id","username","product_id","price","status","invoice_id","invoice_url",
+      "created_at","paid_at","delivered_at","stock_sheet","stock_row","stock_payload"
+    ]]);
+  }
 }
 
-async function appendOrder({ orderId, chatId, groupId, amount, status }) {
-  await ensureOrdersHeader();
-  await sheetAppend(`${ORDERS_TAB}!A:G`, [
-    orderId,
-    String(chatId),
-    groupId,
-    String(amount),
-    status,
-    nowISO(),
-    "",
-  ]);
-}
-
-async function findOrderRow(orderId) {
-  const values = await sheetGet(`${ORDERS_TAB}!A:G`).catch(() => []);
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][0] || "") === orderId) {
-      return { rowNumber1Based: i + 1, row: values[i] };
+async function findFirstStockRow(sheetName) {
+  // Read A2:G (User ID..Email Recovery)
+  const values = await sheetsGet(`${sheetName}!A2:G`);
+  // values[i] corresponds to row (i+2)
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i];
+    const userId = row?.[0];
+    if (userId && String(userId).trim() !== "") {
+      return { rowNumber: i + 2, rowValues: row };
     }
   }
   return null;
 }
 
-async function markOrderCompleted(orderId, completedAtISO) {
-  const found = await findOrderRow(orderId);
-  if (!found) return false;
-
-  const r = found.row;
-  const updated = [
-    r[0] || orderId,
-    r[1] || "",
-    r[2] || "",
-    r[3] || "",
-    "completed",
-    r[5] || "",
-    completedAtISO || nowISO(),
-  ];
-  await sheetUpdate(`${ORDERS_TAB}!A${found.rowNumber1Based}:G${found.rowNumber1Based}`, updated);
-  return true;
-}
-
-async function getTotalCompletedTransactions() {
-  const values = await sheetGet(`${ORDERS_TAB}!A:G`).catch(() => []);
-  if (values.length <= 1) return 0;
+async function countStock(sheetName) {
+  const values = await sheetsGet(`${sheetName}!A2:A`);
   let count = 0;
-  for (let i = 1; i < values.length; i++) {
-    const status = String(values[i][4] || "").toLowerCase().trim();
-    if (status === "completed") count++;
+  for (const r of values) {
+    const v = r?.[0];
+    if (v && String(v).trim() !== "") count++;
   }
   return count;
 }
 
-// ==========================
-// Stock logic (ID1..ID8)
-// ==========================
-async function getStockCount(groupId) {
-  const values = await sheetGet(`${groupId}!A:Z`).catch(() => []);
-  if (values.length <= 1) return 0;
-  const rows = values.slice(1);
-  const nonEmpty = rows.filter((r) => r.some((c) => String(c || "").trim() !== ""));
-  return nonEmpty.length;
-}
-
-async function buildStockMessage() {
+async function getAllStockCounts() {
   const counts = {};
-  for (const g of GROUPS) counts[g] = await getStockCount(g);
-
-  const lines = [];
-  lines.push("📦 <b>Stok saat ini (READY saja):</b>");
-  for (const g of GROUPS) {
-    const c = counts[g];
-    const dot = c > 0 ? "🟢" : "🔴";
-    lines.push(`${dot} <b>${g}</b>: <b>${c}</b> stok — ${rupiah(PRICE_BY_GROUP[g])}`);
+  for (const id of ID_LIST) {
+    counts[id] = await countStock(id);
   }
-  lines.push("");
-  lines.push("Pilih ID yang ingin dibeli:");
-
-  const inline = [];
-  for (const g of GROUPS) {
-    if (counts[g] > 0) inline.push([{ text: `${g} (${rupiah(PRICE_BY_GROUP[g])})`, callback_data: `buy:${g}` }]);
-  }
-  if (inline.length === 0) inline.push([{ text: "Stok habis", callback_data: "noop" }]);
-
-  return { text: lines.join("\n"), reply_markup: { inline_keyboard: inline } };
+  return counts;
 }
 
-// Deliver one stock item: pick first non-empty row (after header), send all filled columns, then delete row
-function formatProductDetail(headers, row) {
+function buildStockText(counts) {
   const lines = [];
-  lines.push("✅ <b>Produk berhasil dibeli</b>");
-  lines.push("");
-  lines.push("<b>Detail produk:</b>");
-  for (let i = 0; i < headers.length; i++) {
-    const key = String(headers[i] || "").trim();
-    const val = String(row[i] || "").trim();
-    if (key && val) lines.push(`• <b>${escapeHtml(key)}</b>: <code>${escapeHtml(val)}</code>`);
+  lines.push(`<b>📦 Stok saat ini (READY saja):</b>\n`);
+  for (const id of ID_LIST) {
+    const c = counts[id] || 0;
+    const price = PRICE_MAP[id];
+    const dot = c > 0 ? "🟢" : "🔴";
+    lines.push(`${dot} <b>${id}</b>: ${c} stok — <b>${rupiah(price)}</b>`);
   }
-  lines.push("");
-  lines.push("Terima kasih 🙏");
+  lines.push(`\n<i>Pilih ID yang ingin dibeli:</i>`);
   return lines.join("\n");
 }
 
-async function deliverOneItem(chatId, groupId) {
-  const values = await sheetGet(`${groupId}!A:Z`).catch(() => []);
-  if (values.length <= 1) {
-    await sendMessage(chatId, "Maaf, stok habis saat diproses. Silakan order ulang.");
-    return false;
-  }
-
-  const headers = values[0] || [];
-  const rows = values.slice(1);
-
-  let pickedIndex = -1;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].some((c) => String(c || "").trim() !== "")) {
-      pickedIndex = i;
-      break;
+function buildProductButtons(counts) {
+  const buttons = [];
+  for (const id of ID_LIST) {
+    if ((counts[id] || 0) > 0) {
+      buttons.push([{ text: `${id} (${rupiah(PRICE_MAP[id])})`, callback_data: `BUY:${id}` }]);
     }
   }
-  if (pickedIndex === -1) {
-    await sendMessage(chatId, "Maaf, stok habis saat diproses. Silakan order ulang.");
-    return false;
+  // jika semua kosong
+  if (buttons.length === 0) {
+    buttons.push([{ text: "Tidak ada stok ready", callback_data: "NO_STOCK" }]);
   }
-
-  const pickedRow = rows[pickedIndex];
-  await sendMessage(chatId, formatProductDetail(headers, pickedRow));
-
-  // delete that row from sheet (header row = 0, first data row = 1)
-  const rowIndexZeroBased = 1 + pickedIndex;
-  await sheetDeleteRowByTabTitle(groupId, rowIndexZeroBased);
-  return true;
+  return buttons;
 }
 
-// ==========================
-// Pakasir API (your current working style)
-// ==========================
-// NOTE: If your Pakasir endpoint differs, only edit these two functions.
-// From your earlier setup, these endpoints match what you used.
-async function pakasirCreateQris(orderId, amount) {
-  const url = "https://app.pakasir.com/api/transactioncreate/qris";
-  const res = await fetch(url, {
+// =========================
+// Pakasir (placeholder safe)
+// =========================
+/**
+ * NOTE:
+ * Aku tidak tahu endpoint pasti Pakasir kamu (tiap provider beda).
+ * Jadi aku buat 1 function yang kamu tinggal sesuaikan endpoint-nya kalau perlu.
+ *
+ * Yang wajib dari Pakasir:
+ * - bikin invoice: return { invoice_id, invoice_url, qr_url? }
+ * - webhook: kirim status PAID beserta invoice_id / order_id
+ */
+async function pakasirCreateInvoice({ orderId, title, amount, customerChatId }) {
+  // Kamu mungkin perlu ubah endpoint ini sesuai dokumentasi Pakasir kamu.
+  // Contoh pattern umum:
+  // POST https://pakasir.com/api/invoices
+  // headers: Authorization: Bearer <API_KEY>
+  // body: { amount, description, external_id, ... }
+  const endpoint = `https://pakasir.id/api/projects/${encodeURIComponent(PAKASIR_SLUG)}/invoices`; // <-- kalau beda, ubah di sini
+
+  const payload = {
+    external_id: orderId,
+    amount: amount,
+    description: title,
+    customer_ref: String(customerChatId),
+  };
+
+  const res = await fetch(endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project: PAKASIR_SLUG,
-      order_id: orderId,
-      amount,
-      api_key: PAKASIR_API_KEY,
-    }),
+    headers: {
+      "content-type": "application/json",
+      "authorization": `Bearer ${PAKASIR_API_KEY}`,
+    },
+    body: JSON.stringify(payload),
   });
 
-  const data = await res.json().catch(() => ({}));
-  // Expect: data.payment.payment_number (QR string), total_payment, expired_at, payment_method
-  if (!data?.payment?.payment_number) {
-    console.log("Pakasir create error:", data);
-    throw new Error("Gagal membuat invoice Pakasir");
+  let json = null;
+  try { json = await res.json(); } catch { json = null; }
+
+  // Kalau endpoint beda, biasanya error di sini. Lihat logs Render untuk menyesuaikan.
+  if (!res.ok) {
+    console.log("Pakasir create invoice failed:", res.status, json);
+    throw new Error("Pakasir invoice gagal dibuat. Perlu sesuaikan endpoint/format sesuai Pakasir.");
   }
-  return data.payment;
+
+  // Normalisasi output (sesuaikan jika struktur beda)
+  const invoiceId = json?.invoice_id || json?.data?.id || json?.id;
+  const invoiceUrl = json?.invoice_url || json?.data?.invoice_url || json?.data?.url || json?.url;
+
+  if (!invoiceId || !invoiceUrl) {
+    console.log("Pakasir response unknown:", json);
+    throw new Error("Response Pakasir tidak dikenali. Cek struktur JSON di logs.");
+  }
+
+  return { invoice_id: invoiceId, invoice_url: invoiceUrl, raw: json };
 }
 
-async function pakasirCancel(orderId, amount) {
-  const url = "https://app.pakasir.com/api/transactioncancel";
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project: PAKASIR_SLUG,
-      order_id: orderId,
-      amount,
-      api_key: PAKASIR_API_KEY,
-    }),
-  });
-  return res.json().catch(() => ({}));
+// =========================
+// UI Text
+// =========================
+function mainMenuKeyboard() {
+  return {
+    keyboard: [
+      [{ text: "📦 List Produk" }],
+      [{ text: "ℹ️ INFORMASI" }, { text: "✨ Cara Order" }],
+    ],
+    resize_keyboard: true,
+  };
 }
 
-// ==========================
-// Premium Dashboard / Welcome
-// ==========================
-async function handleStart(chatId) {
-  await upsertUser(chatId);
+function infoText() {
+  return (
+    `<b>ℹ️ INFORMASI</b>\n` +
+    `• Produk digital dikirim otomatis setelah pembayaran terverifikasi.\n` +
+    `• Pastikan kamu memilih ID yang benar.\n` +
+    `• Jika ada kendala, hubungi admin.\n\n` +
+    `<b>Admin:</b> <code>${ADMIN_CHAT_ID}</code>`
+  );
+}
 
-  const totalUsers = await getTotalUsers();
-  const totalDone = await getTotalCompletedTransactions();
+function caraOrderText() {
+  return (
+    `<b>✨ Cara Order</b>\n` +
+    `1) Klik <b>📦 List Produk</b>\n` +
+    `2) Pilih ID yang READY\n` +
+    `3) Bot buat invoice pembayaran\n` +
+    `4) Setelah status <b>PAID</b>, bot kirim detail produk otomatis\n\n` +
+    `<i>Catatan: stok yang sudah sold tidak akan muncul lagi.</i>`
+  );
+}
+
+// =========================
+// Handlers
+// =========================
+async function handleStart(chatId, username) {
+  await ensureOrdersHeader();
 
   const caption =
-    "👋 <b>Welcome to Ann Store</b>\n" +
-    "────────────────────\n" +
-    `👥 <b>Total User Bot:</b> ${totalUsers} Orang\n` +
-    `✅ <b>Total Transaksi Terselesaikan:</b> ${totalDone}x\n\n` +
-    "Gunakan menu di bawah untuk mulai ✨";
+    `Halo, <b>${escapeHtml(username || "kak")}</b> 👋\n` +
+    `Selamat datang di toko.\n\n` +
+    `Gunakan menu di bawah untuk mulai.`;
 
-  // Send animation welcome
-  await tg("sendAnimation", {
-    chat_id: chatId,
-    animation: WELCOME_ANIM_FILE_ID,
-    caption,
-    parse_mode: "HTML",
-  });
+  if (WELCOME_ANIM_FILE_ID && String(WELCOME_ANIM_FILE_ID).trim() !== "") {
+    await sendAnim(chatId, WELCOME_ANIM_FILE_ID, caption, { reply_markup: mainMenuKeyboard() });
+  } else {
+    await sendText(chatId, caption, { reply_markup: mainMenuKeyboard() });
+  }
+}
 
-  // Send menu keyboard
-  await sendMessage(chatId, "👇 Pilih Menu:", {
-reply_markup: {
-  keyboard: [
-    [{ text: "📦 List Produk" }],
-    [{ text: "ℹ️ INFORMASI" }, { text: "✨ Cara Order" }],
-  ],
-  resize_keyboard: true,
-},
+async function handleListProduk(chatId) {
+  const counts = await getAllStockCounts();
+  const text = buildStockText(counts);
+  const buttons = buildProductButtons(counts);
+
+  await sendText(chatId, text, {
+    reply_markup: { inline_keyboard: buttons },
   });
 }
 
-// ==========================
-// Text handler (menu buttons)
-// ==========================
-async function handleText(chatId, text) {
-  const t = (text || "").trim().toLowerCase();
-
-  if (t === "/start") return handleStart(chatId);
-
-  if (t.includes("list produk")) {
-    const stock = await buildStockMessage();
-    return sendMessage(chatId, stock.text, { reply_markup: stock.reply_markup });
-  }
-
-  if (t.includes("stock")) {
-    const stock = await buildStockMessage();
-    return sendMessage(chatId, stock.text, { reply_markup: stock.reply_markup });
-  }
-
-  if (t.includes("informasi")) {
-    return sendMessage(
-      chatId,
-      "ℹ️ <b>INFORMASI</b>\n\n" +
-        "• Produk digital legal\n" +
-        "• Proses otomatis setelah pembayaran\n" +
-        "• Jika ada kendala, hubungi admin"
-    );
-  }
-
-  if (t.includes("cara order")) {
-    return sendMessage(
-      chatId,
-      "✨ <b>Cara Order</b>\n\n" +
-        "1) Klik 📦 <b>List Produk</b>\n" +
-        "2) Pilih ID yang tersedia\n" +
-        "3) Bayar via QRIS (scan QR)\n" +
-        "4) Setelah status <b>completed</b>, bot kirim detail produk otomatis\n"
-    );
-  }
-
-  if (t.includes("deposit")) {
-    // Optional feature; keep it simple
-    return sendMessage(chatId, "💰 <b>DEPOSIT</b>\n\nFitur deposit bisa ditambahkan nanti. Untuk sekarang gunakan pembayaran per order ya.");
-  }
-
-  return sendMessage(chatId, "Ketik /start atau klik menu.");
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
-// ==========================
-// Callback handler (buy / cancel)
-// ==========================
-async function handleCallback(callbackQuery) {
-  const chatId = callbackQuery.message?.chat?.id;
-  const data = callbackQuery.data || "";
+async function createOrderAndInvoice({ chatId, username, productId }) {
+  await ensureOrdersHeader();
 
-  await tg("answerCallbackQuery", { callback_query_id: callbackQuery.id });
+  const price = PRICE_MAP[productId];
+  if (!price) throw new Error("Product tidak dikenal.");
 
-  if (!chatId) return;
-  if (data === "noop") return;
+  // lock stok: ambil 1 row pertama yang tersedia
+  const stock = await findFirstStockRow(productId);
+  if (!stock) {
+    await sendText(chatId, `Maaf, stok <b>${productId}</b> sedang habis.`, { parse_mode: "HTML" });
+    return;
+  }
 
-  // buy:IDx
-  if (data.startsWith("buy:")) {
-    const groupId = data.split(":")[1];
-    if (!PRICE_BY_GROUP[groupId]) return sendMessage(chatId, "ID tidak dikenal.");
+  const orderId = makeOrderId();
+  const title = `${productId} x1`;
 
-    const stockCount = await getStockCount(groupId);
-    if (stockCount <= 0) return sendMessage(chatId, "Maaf, stok habis.");
-
-    const amount = PRICE_BY_GROUP[groupId];
-    const orderId = `TX${Date.now()}-${chatId}-${groupId}`;
-
-    await appendOrder({ orderId, chatId, groupId, amount, status: "pending" });
-
-    const pay = await pakasirCreateQris(orderId, amount);
-
-    const totalPay = Number(pay.total_payment ?? amount);
-    const expiredAt = pay.expired_at ? String(pay.expired_at) : "-";
-    const method = pay.payment_method ? String(pay.payment_method) : "qris";
-
-    const caption =
-      "💳 <b>Invoice Berhasil Dibuat</b>\n\n" +
-      "🧾 <b>Informasi Item</b>\n" +
-      `— List Yang Dibeli:\n` +
-      `1. ${escapeHtml(groupId)} x1 — <b>${rupiah(amount)}</b>\n\n` +
-      "🧾 <b>Informasi Pembayaran</b>\n" +
-      `— ID Transaksi: <code>${escapeHtml(orderId)}</code>\n` +
-      `— Total Dibayar: <b>${rupiah(totalPay)}</b>\n` +
-      `— Metode: <b>${escapeHtml(method)}</b>\n` +
-      `— Expired: <b>${escapeHtml(expiredAt)}</b>\n\n` +
-      "Silakan scan QR di atas untuk membayar.";
-
-    await sendQRPhoto(chatId, pay.payment_number, caption, {
-      reply_markup: {
-        inline_keyboard: [[{ text: "❌ Batalkan Pembelian", callback_data: `cancel:${orderId}:${amount}` }]],
-      },
+  // buat invoice pakasir
+  let invoice = null;
+  try {
+    invoice = await pakasirCreateInvoice({
+      orderId,
+      title,
+      amount: price,
+      customerChatId: chatId,
     });
-
+  } catch (e) {
+    await sendText(
+      chatId,
+      `❌ Gagal membuat invoice.\n\n<code>${escapeHtml(e.message)}</code>\n\nCek konfigurasi Pakasir (endpoint/slug/api key).`,
+      { parse_mode: "HTML" }
+    );
     return;
   }
 
-  // cancel:orderId:amount
-  if (data.startsWith("cancel:")) {
-    const parts = data.split(":");
-    const orderId = parts[1];
-    const amount = Number(parts[2] || 0);
+  // simpan order ke Orders
+  const stockPayload = {
+    columns: ["User ID","Username","Nama","Nomor HP","2FA","Email Recovery"],
+    values: stock.rowValues || [],
+  };
 
-    if (!orderId || !amount) return sendMessage(chatId, "Data pembatalan tidak valid.");
+  await sheetsAppend(`${SHEET_ORDERS_TAB}!A:N`, [[
+    orderId,
+    String(chatId),
+    username || "",
+    productId,
+    String(price),
+    "pending",
+    invoice.invoice_id,
+    invoice.invoice_url,
+    nowISO(),
+    "",
+    "",
+    productId,
+    String(stock.rowNumber),
+    JSON.stringify(stockPayload),
+  ]]);
 
-    await pakasirCancel(orderId, amount);
-    await sendMessage(chatId, "✅ Pembelian dibatalkan. Kamu bisa order lagi kapan saja.");
-    return;
-  }
+  // kirim link bayar (button link)
+  await sendText(
+    chatId,
+    `<b>🧾 Invoice berhasil dibuat</b>\n` +
+      `• Produk: <b>${productId}</b>\n` +
+      `• Total: <b>${rupiah(price)}</b>\n` +
+      `• Order ID: <code>${orderId}</code>\n\n` +
+      `Silakan klik tombol bayar di bawah:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "💳 Bayar Sekarang", url: invoice.invoice_url }],
+          [{ text: "❌ Batalkan", callback_data: `CANCEL:${orderId}` }],
+        ],
+      },
+    }
+  );
 }
 
-// ==========================
-// Webhooks
-// ==========================
-app.post(`/telegram/webhook/${TELEGRAM_SECRET}`, (req, res) => {
-  // ✅ balas cepat biar Telegram gak timeout
-  res.json({ ok: true });
+async function cancelOrder(chatId, orderId) {
+  // cari order di sheet (ambil semua order, cari cocok) — sederhana
+  const values = await sheetsGet(`${SHEET_ORDERS_TAB}!A2:N`);
+  let idx = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i]?.[0] === orderId) { idx = i; break; }
+  }
+  if (idx === -1) {
+    await sendText(chatId, "Order tidak ditemukan.");
+    return;
+  }
+
+  const rowNumber = idx + 2;
+  const status = values[idx]?.[5];
+
+  if (status === "paid") {
+    await sendText(chatId, "Order sudah dibayar, tidak bisa dibatalkan.");
+    return;
+  }
+
+  // update status jadi canceled
+  await sheetsUpdate(`${SHEET_ORDERS_TAB}!F${rowNumber}:F${rowNumber}`, [["canceled"]]);
+  await sendText(chatId, `✅ Order <code>${orderId}</code> dibatalkan.`, { parse_mode: "HTML" });
+}
+
+// deliver product (kirim data dari stock_payload) + hapus stok row
+async function deliverOrderByInvoice(invoiceId) {
+  const values = await sheetsGet(`${SHEET_ORDERS_TAB}!A2:N`);
+  let idx = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i]?.[6] === invoiceId) { idx = i; break; }
+  }
+  if (idx === -1) return { ok: false, reason: "order_not_found" };
+
+  const rowNumber = idx + 2;
+  const order = values[idx];
+
+  const orderId = order[0];
+  const chatId = Number(order[1]);
+  const productId = order[3];
+  const status = order[5];
+  const stockSheet = order[11];
+  const stockRow = Number(order[12]);
+  const stockPayloadStr = order[13];
+
+  if (status === "paid") {
+    return { ok: true, already: true };
+  }
+
+  // set paid
+  await sheetsUpdate(`${SHEET_ORDERS_TAB}!F${rowNumber}:J${rowNumber}`, [[
+    "paid", order[6], order[7], order[8], nowISO()
+  ]]);
+
+  // kirim detail produk dari payload
+  let payload = null;
+  try { payload = JSON.parse(stockPayloadStr || "{}"); } catch { payload = null; }
+
+  const v = payload?.values || [];
+  const [userId, uname, nama, hp, twofa, email] = v;
+
+  const detail =
+    `<b>✅ Produk berhasil dibeli</b>\n` +
+    `• Produk: <b>${productId}</b>\n` +
+    `• Order ID: <code>${orderId}</code>\n\n` +
+    `<b>Detail:</b>\n` +
+    `• User ID: <code>${escapeHtml(userId || "-")}</code>\n` +
+    `• Username: <code>${escapeHtml(uname || "-")}</code>\n` +
+    `• Nama: <code>${escapeHtml(nama || "-")}</code>\n` +
+    `• Nomor HP: <code>${escapeHtml(hp || "-")}</code>\n` +
+    `• 2FA: <code>${escapeHtml(twofa || "-")}</code>\n` +
+    `• Email Recovery: <code>${escapeHtml(email || "-")}</code>\n\n` +
+    `<i>Terima kasih sudah order.</i>`;
+
+  await sendText(chatId, detail, { parse_mode: "HTML" });
+
+  // hapus stok: kosongkan A:G pada row itu
+  // (supaya tidak tampil lagi)
+  await sheetsClear(`${stockSheet}!A${stockRow}:G${stockRow}`);
+
+  // mark delivered time
+  await sheetsUpdate(`${SHEET_ORDERS_TAB}!K${rowNumber}:K${rowNumber}`, [[nowISO()]]);
+
+  // notif admin
+  await sendText(
+    Number(ADMIN_CHAT_ID),
+    `✅ PAID: <b>${productId}</b> | Order <code>${orderId}</code> | Invoice <code>${invoiceId}</code>`,
+    { parse_mode: "HTML" }
+  );
+
+  return { ok: true };
+}
+
+// =========================
+// Telegram webhook (FAST ACK)
+// =========================
+app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, (req, res) => {
+  // balas cepat agar tidak timeout
+  res.status(200).send("OK");
 
   // proses di belakang
-  (async () => {
-    try {
+  Promise.resolve()
+    .then(async () => {
       const update = req.body;
 
-      if (update.callback_query) {
-        const chatId = update.callback_query.message?.chat?.id;
-        if (chatId) await upsertUser(chatId);
-        await handleCallback(update.callback_query);
+      // callback (klik tombol)
+      if (update?.callback_query) {
+        const cq = update.callback_query;
+        const chatId = cq.message?.chat?.id;
+        const username = cq.from?.username || cq.from?.first_name || "";
+
+        // penting: jawab callback biar tombol tidak "loading"
+        try {
+          await tg("answerCallbackQuery", { callback_query_id: cq.id });
+        } catch {}
+
+        const data = cq.data || "";
+
+        if (data === "NO_STOCK") {
+          await sendText(chatId, "Stok sedang kosong.");
+          return;
+        }
+
+        if (data.startsWith("BUY:")) {
+          const productId = data.split(":")[1];
+          await createOrderAndInvoice({ chatId, username, productId });
+          return;
+        }
+
+        if (data.startsWith("CANCEL:")) {
+          const orderId = data.split(":")[1];
+          await cancelOrder(chatId, orderId);
+          return;
+        }
+
+        await sendText(chatId, "Perintah tidak dikenali.");
         return;
       }
 
-      const msg = update.message;
+      // message text
+      const msg = update?.message;
       if (!msg) return;
 
       const chatId = msg.chat?.id;
-      if (!chatId) return;
+      const username = msg.from?.username || msg.from?.first_name || "";
 
-      await upsertUser(chatId);
-      await handleText(chatId, msg.text);
-    } catch (e) {
-      console.log("Telegram webhook bg error:", e);
-    }
-  })();
-});
-    console.log("Telegram webhook error:", e);
-    res.json({ ok: true });
-  }
-});
+      const text = (msg.text || "").trim();
 
-// Pakasir webhook: expects status "completed"
-app.post(`/pakasir/webhook/${PAKASIR_WEBHOOK_SECRET}`, async (req, res) => {
-  try {
-    const body = req.body || {};
-    const status = String(body.status || "").toLowerCase();
-    const orderId = String(body.order_id || "");
-    const amount = Number(body.amount || 0);
+      if (text === "/start") {
+        await handleStart(chatId, username);
+        return;
+      }
 
-    if (!orderId) return res.json({ ok: true });
+      if (text === "📦 List Produk" || text.toLowerCase() === "list produk") {
+        await handleListProduk(chatId);
+        return;
+      }
 
-    if (status !== "completed") return res.json({ ok: true });
+      if (text === "ℹ️ INFORMASI" || text.toLowerCase() === "informasi") {
+        await sendText(chatId, infoText(), { reply_markup: mainMenuKeyboard() });
+        return;
+      }
 
-    await markOrderCompleted(orderId, body.completed_at || nowISO());
+      if (text === "✨ Cara Order" || text.toLowerCase() === "cara order") {
+        await sendText(chatId, caraOrderText(), { reply_markup: mainMenuKeyboard() });
+        return;
+      }
 
-    const found = await findOrderRow(orderId);
-    if (!found) return res.json({ ok: true });
-
-    const chatId = Number(found.row[1] || 0);
-    const groupId = String(found.row[2] || "");
-    const expectedAmount = Number(found.row[3] || 0);
-
-    if (!chatId || !groupId) return res.json({ ok: true });
-
-    // Safety check nominal
-    if (expectedAmount && amount && expectedAmount !== amount) {
-      await sendMessage(chatId, "⚠️ Pembayaran terdeteksi, tapi nominal tidak sesuai. Admin akan cek.");
-      return res.json({ ok: true });
-    }
-
-    await deliverOneItem(chatId, groupId);
-    res.json({ ok: true });
-  } catch (e) {
-    console.log("Pakasir webhook error:", e);
-    res.json({ ok: true });
-  }
+      // fallback
+      await sendText(chatId, "Pilih menu di bawah ya 👇", { reply_markup: mainMenuKeyboard() });
+    })
+    .catch((e) => console.log("Telegram bg error:", e));
 });
 
-// Health
-app.get("/", (req, res) => res.send("OK"));
+// =========================
+// Pakasir webhook
+// =========================
+app.post(`/pakasir/webhook/${PAKASIR_WEBHOOK_SECRET}`, (req, res) => {
+  // balas cepat
+  res.status(200).send("OK");
 
-// Start server (Render)
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on port", PORT));
+  Promise.resolve()
+    .then(async () => {
+      const payload = req.body;
+      console.log("Pakasir webhook payload:", JSON.stringify(payload));
+
+      // Kamu mungkin perlu sesuaikan field status berdasarkan payload asli pakasir.
+      // Kita coba dukung beberapa format umum:
+      const status =
+        payload?.status ||
+        payload?.data?.status ||
+        payload?.event ||
+        payload?.type ||
+        "";
+
+      const normalized = String(status).toLowerCase();
+
+      // Ambil invoice id dari payload
+      const invoiceId =
+        payload?.invoice_id ||
+        payload?.data?.invoice_id ||
+        payload?.data?.id ||
+        payload?.id;
+
+      if (!invoiceId) {
+        console.log("Pakasir webhook: missing invoice id");
+        return;
+      }
+
+      // Anggap paid jika status mengandung "paid" / "success" / "settlement"
+      const isPaid =
+        normalized.includes("paid") ||
+        normalized.includes("success") ||
+        normalized.includes("settlement");
+
+      if (!isPaid) {
+        console.log("Pakasir webhook: not paid event:", status);
+        return;
+      }
+
+      await deliverOrderByInvoice(String(invoiceId));
+    })
+    .catch((e) => console.log("Pakasir bg error:", e));
+});
+
+// health check
+app.get("/", (req, res) => res.status(200).send("OK"));
+
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
