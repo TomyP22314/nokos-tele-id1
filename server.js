@@ -443,13 +443,13 @@ async function handleStart(chatId) {
 
   // Send menu keyboard
   await sendMessage(chatId, "👇 Pilih Menu:", {
-    reply_markup: {
-      keyboard: [
-        [{ text: "📦 List Produk" }, { text: "📊 Stock" }],
-        [{ text: "ℹ️ INFORMASI" }, { text: "✨ Cara Order" }, { text: "💰 DEPOSIT" }],
-      ],
-      resize_keyboard: true,
-    },
+reply_markup: {
+  keyboard: [
+    [{ text: "📦 List Produk" }],
+    [{ text: "ℹ️ INFORMASI" }, { text: "✨ Cara Order" }],
+  ],
+  resize_keyboard: true,
+},
   });
 }
 
