@@ -38,9 +38,11 @@ const {
 
 /* ================= GOOGLE ================= */
 
+const sa = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON);
+
 const auth = new google.auth.JWT({
-  email: JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON).client_email,
-  key: JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON).private_key,
+  email: sa.client_email,
+  key: sa.private_key,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
@@ -66,12 +68,11 @@ async function appendTransaksi(row) {
 /* ================= TELEGRAM ================= */
 
 async function tg(method, body) {
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
-  return res.json();
 }
 
 function rupiah(n) {
@@ -103,11 +104,16 @@ async function sendProduk(chatId) {
 async function startCheckout(chatId, username, index) {
   const rows = await readSheet("APK NONTON!A2:C");
   const produk = rows[index];
-
   if (!produk) return;
 
+  const namaProduk = produk[0];
   const invoice = makeInvoice();
-  const harga = 15000; // kalau mau beda tiap produk, tambahkan kolom harga di sheet
+
+  let harga = 15000;
+
+  if (namaProduk === "DRAKOR ID") harga = 15000;
+  if (namaProduk === "APK DRACIN") harga = 20000;
+  if (namaProduk === "APK ANIME") harga = 15000;
 
   const payUrl =
     `https://app.pakasir.com/pay/${PAKASIR_SLUG}/${harga}?order_id=${invoice}`;
@@ -115,7 +121,7 @@ async function startCheckout(chatId, username, index) {
   await tg("sendMessage", {
     chat_id: chatId,
     text:
-      `Invoice: ${invoice}\nProduk: ${produk[0]}\nTotal: ${rupiah(harga)}`,
+      `Invoice: ${invoice}\nProduk: ${namaProduk}\nTotal: ${rupiah(harga)}`,
     reply_markup: {
       inline_keyboard: [[{ text: "Bayar Sekarang", url: payUrl }]]
     }
@@ -123,7 +129,7 @@ async function startCheckout(chatId, username, index) {
 
   await tg("sendMessage", {
     chat_id: ADMIN_CHAT_ID,
-    text: `Order baru: ${invoice}`
+    text: `Order baru:\n${invoice}\n${namaProduk}\n${rupiah(harga)}`
   });
 }
 
@@ -131,8 +137,8 @@ async function startCheckout(chatId, username, index) {
 
 async function deliver(orderId, amount) {
   const rows = await readSheet("APK NONTON!A2:C");
-  const produk = rows[0]; // sederhana: kirim produk pertama
 
+  const produk = rows[0]; // kirim produk pertama (simple mode)
   if (!produk) return;
 
   await tg("sendMessage", {
@@ -182,4 +188,6 @@ app.post(`/pakasir/webhook/${PAKASIR_WEBHOOK_SECRET}`, async (req, res) => {
   res.sendStatus(200);
 });
 
-app.listen(process.env.PORT || 3000);
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Server running...");
+});
