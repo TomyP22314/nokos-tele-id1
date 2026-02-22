@@ -1,6 +1,6 @@
 {
-  "name": "gomstore-bot",
-  "version": "1.4.0",
+  "name": "goms-apk-mod-bot",
+  "version": "2.0.0",
   "type": "module",
   "main": "service.js",
   "scripts": {
