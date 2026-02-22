@@ -1,10 +1,10 @@
 {
-  "name": "telebot-sheets-store",
+  "name": "gomstore-bot",
   "version": "1.0.0",
   "type": "module",
-  "main": "server.js",
+  "main": "service.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node service.js"
   },
   "dependencies": {
     "express": "^4.19.2",
