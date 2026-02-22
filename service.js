@@ -2,27 +2,27 @@ import express from "express";
 import fetch from "node-fetch";
 import { google } from "googleapis";
 import crypto from "crypto";
+import QRCode from "qrcode";
+import FormData from "form-data";
 
 const app = express();
 app.use(express.json());
 
 /* ================= ENV ================= */
-
 const REQUIRED = [
   "BOT_TOKEN",
   "WEBHOOK_SECRET",
   "ADMIN_CHAT_ID",
   "GOOGLE_SERVICE_ACCOUNT_JSON",
   "SHEET_ID",
+  "SHEET_ORDERS_TAB",
   "PAKASIR_SLUG",
   "PAKASIR_API_KEY",
   "PAKASIR_WEBHOOK_SECRET"
 ];
 
 for (const key of REQUIRED) {
-  if (!process.env[key]) {
-    throw new Error("Missing ENV: " + key);
-  }
+  if (!process.env[key]) throw new Error("Missing ENV: " + key);
 }
 
 const {
@@ -31,13 +31,15 @@ const {
   ADMIN_CHAT_ID,
   GOOGLE_SERVICE_ACCOUNT_JSON,
   SHEET_ID,
+  SHEET_ORDERS_TAB,
   PAKASIR_SLUG,
   PAKASIR_API_KEY,
   PAKASIR_WEBHOOK_SECRET
 } = process.env;
 
-/* ================= GOOGLE ================= */
+const BANNER_URL = process.env.BANNER_URL || "";
 
+/* ================= GOOGLE ================= */
 const sa = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON);
 
 const auth = new google.auth.JWT({
@@ -56,138 +58,357 @@ async function readSheet(range) {
   return res.data.values || [];
 }
 
-async function appendTransaksi(row) {
+async function appendRow(tab, row) {
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
-    range: "TRANSAKSI!A:E",
+    range: `${tab}!A:Z`,
     valueInputOption: "RAW",
     requestBody: { values: [row] }
   });
 }
 
-/* ================= TELEGRAM ================= */
+async function updateCell(tab, a1, value) {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range: `${tab}!${a1}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [[value]] }
+  });
+}
 
-async function tg(method, body) {
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+/* ================= TELEGRAM ================= */
+async function tgJson(method, body) {
+  const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
+  const j = await r.json();
+  if (!j.ok) throw new Error("TG error: " + JSON.stringify(j));
+  return j.result;
+}
+
+async function tgSendPhotoBuffer(chatId, buffer, caption) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("photo", buffer, { filename: "qris.png", contentType: "image/png" });
+  if (caption) form.append("caption", caption);
+
+  const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error("TG sendPhoto error: " + JSON.stringify(j));
+  return j.result;
 }
 
 function rupiah(n) {
   return "Rp " + Number(n).toLocaleString("id-ID");
 }
 
-function makeInvoice() {
-  return "INV" + Date.now() + crypto.randomBytes(2).toString("hex").toUpperCase();
+function getHarga(namaProduk) {
+  if (namaProduk === "DRAKOR ID") return 15000;
+  if (namaProduk === "APK DRACIN") return 20000;
+  if (namaProduk === "APK ANIME") return 15000;
+  return 15000;
 }
 
-/* ================= LIST PRODUK ================= */
+function makeInvoice(index) {
+  const rand = crypto.randomBytes(2).toString("hex").toUpperCase();
+  return `INV${index}-${Date.now()}-${rand}`;
+}
+
+function startMenuInline() {
+  return {
+    inline_keyboard: [
+      [{ text: "📦 Produk", callback_data: "MENU_PRODUK" }],
+      [{ text: "ℹ️ Info", callback_data: "MENU_INFO" }, { text: "📌 Cara Order", callback_data: "MENU_CARA" }]
+    ]
+  };
+}
+
+async function sendStart(chatId) {
+  if (BANNER_URL) {
+    await tgJson("sendPhoto", {
+      chat_id: chatId,
+      photo: BANNER_URL,
+      caption: "🎉 Selamat datang di GOMSTORE!"
+    });
+  }
+
+  await tgJson("sendMessage", {
+    chat_id: chatId,
+    text:
+      `👋 Selamat datang!\n\n` +
+      `✅ Produk digital siap kirim otomatis\n` +
+      `💳 Bayar via Pakasir (QR)\n\n` +
+      `Pilih menu di bawah:`,
+    reply_markup: startMenuInline()
+  });
+}
+
+/* ================= PRODUK ================= */
+async function getProdukList() {
+  return await readSheet("APK NONTON!A2:C"); // A nama, B link, C deskripsi
+}
 
 async function sendProduk(chatId) {
-  const rows = await readSheet("APK NONTON!A2:C");
+  const rows = await getProdukList();
+  const list = rows.filter(r => (r?.[0] || "").toString().trim() !== "");
 
-  const buttons = rows.map((r, i) => ([
-    { text: r[0], callback_data: "BUY_" + i }
-  ]));
+  const buttons = list.map((r, i) => ([{ text: r[0], callback_data: "BUY_" + i }]));
 
-  await tg("sendMessage", {
+  await tgJson("sendMessage", {
     chat_id: chatId,
-    text: "Pilih produk:",
+    text: "📦 Pilih produk:",
     reply_markup: { inline_keyboard: buttons }
   });
 }
 
-/* ================= CHECKOUT ================= */
-
-async function startCheckout(chatId, username, index) {
-  const rows = await readSheet("APK NONTON!A2:C");
-  const produk = rows[index];
-  if (!produk) return;
-
-  const namaProduk = produk[0];
-  const invoice = makeInvoice();
-
-  let harga = 15000;
-
-  if (namaProduk === "DRAKOR ID") harga = 15000;
-  if (namaProduk === "APK DRACIN") harga = 20000;
-  if (namaProduk === "APK ANIME") harga = 15000;
-
-  const payUrl =
-    `https://app.pakasir.com/pay/${PAKASIR_SLUG}/${harga}?order_id=${invoice}`;
-
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text:
-      `Invoice: ${invoice}\nProduk: ${namaProduk}\nTotal: ${rupiah(harga)}`,
-    reply_markup: {
-      inline_keyboard: [[{ text: "Bayar Sekarang", url: payUrl }]]
-    }
-  });
-
-  await tg("sendMessage", {
-    chat_id: ADMIN_CHAT_ID,
-    text: `Order baru:\n${invoice}\n${namaProduk}\n${rupiah(harga)}`
-  });
-}
-
-/* ================= DELIVERY ================= */
-
-async function deliver(orderId, amount) {
-  const rows = await readSheet("APK NONTON!A2:C");
-
-  const produk = rows[0]; // kirim produk pertama (simple mode)
-  if (!produk) return;
-
-  await tg("sendMessage", {
-    chat_id: ADMIN_CHAT_ID,
-    text: `Pembayaran sukses ${orderId}`
-  });
-
-  await appendTransaksi([
-    new Date().toISOString(),
-    produk[0],
-    "-",
-    orderId,
-    amount
+/* ================= ORDERS (SHEET) ================= */
+async function createPendingOrder({ invoice, chatId, username, productIndex, productName, amount }) {
+  await appendRow(SHEET_ORDERS_TAB, [
+    new Date().toISOString(), // A created_at
+    invoice,                  // B invoice
+    String(chatId),           // C chat_id
+    username || "",           // D username
+    String(productIndex),     // E product_index
+    productName,              // F product_name
+    String(amount),           // G amount
+    "PENDING",                // H status
+    ""                        // I paid_at
   ]);
 }
 
-/* ================= ROUTES ================= */
+async function findOrderRow(invoice) {
+  const values = await readSheet(`${SHEET_ORDERS_TAB}!A:I`);
+  if (values.length <= 1) return null;
 
+  const rows = values.slice(1);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if ((r[1] || "").toString().trim() === invoice) {
+      return {
+        rowIndex: i + 2,
+        created_at: r[0],
+        invoice: r[1],
+        chat_id: r[2],
+        username: r[3],
+        product_index: Number(r[4]),
+        product_name: r[5],
+        amount: Number(r[6] || 0),
+        status: r[7],
+        paid_at: r[8]
+      };
+    }
+  }
+  return null;
+}
+
+async function setOrderPaid(rowIndex) {
+  await updateCell(SHEET_ORDERS_TAB, `H${rowIndex}`, "PAID");
+  await updateCell(SHEET_ORDERS_TAB, `I${rowIndex}`, new Date().toISOString());
+}
+
+/* ================= PAKASIR ================= */
+function pakasirPayUrl(amount, orderId) {
+  return `https://app.pakasir.com/pay/${encodeURIComponent(PAKASIR_SLUG)}/${amount}?order_id=${encodeURIComponent(orderId)}`;
+}
+
+async function pakasirTransactionDetail(amount, orderId) {
+  const url =
+    `https://app.pakasir.com/api/transactiondetail` +
+    `?project=${encodeURIComponent(PAKASIR_SLUG)}` +
+    `&amount=${encodeURIComponent(amount)}` +
+    `&order_id=${encodeURIComponent(orderId)}` +
+    `&api_key=${encodeURIComponent(PAKASIR_API_KEY)}`;
+
+  const r = await fetch(url);
+  return await r.json();
+}
+
+/* ================= CHECKOUT (KIRIM QR + SIMPAN ORDER) ================= */
+async function startCheckout(chatId, username, index) {
+  const rows = await getProdukList();
+  const produk = rows[index];
+  if (!produk) return;
+
+  const nama = (produk[0] || "").toString().trim();
+  const link = (produk[1] || "").toString().trim();
+  const desk = (produk[2] || "").toString().trim();
+  const harga = getHarga(nama);
+
+  const invoice = makeInvoice(index);
+  const payUrl = pakasirPayUrl(harga, invoice);
+
+  // simpan order PENDING
+  await createPendingOrder({
+    invoice,
+    chatId,
+    username: username || "",
+    productIndex: index,
+    productName: nama,
+    amount: harga
+  });
+
+  // QR bayar
+  const pngBuffer = await QRCode.toBuffer(payUrl, { type: "png", width: 700, margin: 1 });
+
+  const caption =
+    `🧾 Invoice: ${invoice}\n` +
+    `📦 Produk: ${nama}\n` +
+    `💰 Total: ${rupiah(harga)}\n\n` +
+    `Scan QR untuk bayar, atau klik:\n${payUrl}`;
+
+  await tgSendPhotoBuffer(chatId, pngBuffer, caption);
+
+  await tgJson("sendMessage", {
+    chat_id: chatId,
+    text: "✅ Setelah pembayaran sukses, link otomatis dikirim di sini."
+  });
+
+  await tgJson("sendMessage", {
+    chat_id: ADMIN_CHAT_ID,
+    text: `🆕 Order baru\nInvoice: ${invoice}\nProduk: ${nama}\nUser: @${username || "-"}\nTotal: ${rupiah(harga)}`
+  });
+}
+
+/* ================= DELIVERY (KIRIM LINK KE PEMBELI) ================= */
+async function deliver(invoice, amountFromWebhook) {
+  const order = await findOrderRow(invoice);
+  if (!order) {
+    await tgJson("sendMessage", {
+      chat_id: ADMIN_CHAT_ID,
+      text: `⚠️ PAID tapi order tidak ketemu di ${SHEET_ORDERS_TAB}\nInvoice: ${invoice}\nAmount: ${amountFromWebhook}`
+    });
+    return;
+  }
+
+  if (String(order.status).toUpperCase() === "PAID") return;
+
+  // validasi amount sama
+  if (Number(order.amount) !== Number(amountFromWebhook)) {
+    await tgJson("sendMessage", {
+      chat_id: ADMIN_CHAT_ID,
+      text: `⚠️ Amount mismatch\nInvoice: ${invoice}\nOrders: ${order.amount}\nWebhook: ${amountFromWebhook}`
+    });
+    return;
+  }
+
+  const rows = await getProdukList();
+  const produk = rows[order.product_index];
+  if (!produk) {
+    await tgJson("sendMessage", {
+      chat_id: ADMIN_CHAT_ID,
+      text: `⚠️ Produk index tidak ditemukan\nInvoice: ${invoice}\nIndex: ${order.product_index}`
+    });
+    return;
+  }
+
+  const nama = (produk[0] || "").toString().trim();
+  const link = (produk[1] || "").toString().trim();
+  const desk = (produk[2] || "").toString().trim();
+
+  // set PAID di sheet
+  await setOrderPaid(order.rowIndex);
+
+  // catat ke TRANSAKSI
+  await appendRow("TRANSAKSI", [
+    new Date().toISOString(),         // A tanggal
+    nama,                             // B nama produk
+    order.username ? `@${order.username}` : "-", // C username
+    invoice,                          // D invoice
+    String(order.amount)              // E harga
+  ]);
+
+  // kirim ke pembeli
+  await tgJson("sendMessage", {
+    chat_id: order.chat_id,
+    text:
+      `✅ Pembayaran berhasil!\n\n` +
+      `📦 Produk: ${nama}\n` +
+      `🧾 Invoice: ${invoice}\n\n` +
+      `🔗 Link Download:\n${link}\n\n` +
+      (desk ? `📝 Deskripsi:\n${desk}\n\n` : "") +
+      `Terima kasih 🙏`
+  });
+
+  // notif admin
+  await tgJson("sendMessage", {
+    chat_id: ADMIN_CHAT_ID,
+    text: `✅ Delivery sukses\nInvoice: ${invoice}\nProduk: ${nama}\nKe: ${order.chat_id}`
+  });
+}
+
+/* ================= ROUTES ================= */
 app.get("/", (req, res) => res.send("OK"));
 
 app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
-  const update = req.body;
+  try {
+    const update = req.body;
 
-  if (update.message?.text === "/start") {
-    await sendProduk(update.message.chat.id);
+    if (update.message?.text === "/start") {
+      await sendStart(update.message.chat.id);
+      return res.sendStatus(200);
+    }
+
+    if (update.callback_query) {
+      const chatId = update.callback_query.message.chat.id;
+      const data = update.callback_query.data;
+      const username = update.callback_query.from?.username || "";
+
+      await tgJson("answerCallbackQuery", { callback_query_id: update.callback_query.id });
+
+      if (data === "MENU_PRODUK") {
+        await sendProduk(chatId);
+        return res.sendStatus(200);
+      }
+      if (data === "MENU_INFO") {
+        await tgJson("sendMessage", {
+          chat_id: chatId,
+          text: "ℹ️ INFO\n\n• Pembayaran via Pakasir\n• Link dikirim otomatis setelah sukses\n• Jika kendala, chat admin."
+        });
+        return res.sendStatus(200);
+      }
+      if (data === "MENU_CARA") {
+        await tgJson("sendMessage", {
+          chat_id: chatId,
+          text: "📌 CARA ORDER\n\n1) Klik 📦 Produk\n2) Pilih produk\n3) Scan QR / klik link bayar\n4) Setelah sukses, link otomatis dikirim ✅"
+        });
+        return res.sendStatus(200);
+      }
+
+      if (data.startsWith("BUY_")) {
+        const index = Number(data.replace("BUY_", ""));
+        await startCheckout(chatId, username, index);
+        return res.sendStatus(200);
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (e) {
+    console.error("telegram error:", e);
+    res.sendStatus(200);
   }
-
-  if (update.callback_query) {
-    const index = Number(update.callback_query.data.replace("BUY_", ""));
-    await startCheckout(
-      update.callback_query.message.chat.id,
-      update.callback_query.from.username,
-      index
-    );
-  }
-
-  res.sendStatus(200);
 });
 
 app.post(`/pakasir/webhook/${PAKASIR_WEBHOOK_SECRET}`, async (req, res) => {
-  const { order_id, amount, status } = req.body;
+  try {
+    const { order_id, amount } = req.body || {};
+    res.sendStatus(200);
 
-  if (status === "completed") {
+    if (!order_id || !amount) return;
+
+    // validasi via transactiondetail
+    const detail = await pakasirTransactionDetail(amount, order_id);
+    const status = String(detail?.transaction?.status || "").toLowerCase();
+    if (status !== "completed") return;
+
     await deliver(order_id, amount);
+  } catch (e) {
+    console.error("pakasir error:", e);
   }
-
-  res.sendStatus(200);
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server running...");
-});
+app.listen(process.env.PORT || 3000, () => console.log("Server running..."));
