@@ -1,6 +1,7 @@
+// package.json
 {
-  "name": "goms-apk-mod-pro",
-  "version": "3.0.0",
+  "name": "goms-apk-mod-bot",
+  "version": "1.0.0",
   "type": "module",
   "main": "service.js",
   "scripts": {
@@ -10,9 +11,6 @@
     "express": "^4.19.2",
     "googleapis": "^140.0.0",
     "node-fetch": "^3.3.2",
-    "qrcode": "^1.5.4",
-    "form-data": "^4.0.0",
-    "chartjs-node-canvas": "^4.1.7",
-    "csv-stringify": "^6.3.0"
+    "form-data": "^4.0.0"
   }
 }
