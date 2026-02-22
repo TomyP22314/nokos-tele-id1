@@ -144,9 +144,9 @@ async function sendStart(chatId) {
   await tgJson("sendMessage", {
     chat_id: chatId,
     text:
-      `👋 Selamat datang!\n\n` +
-      `✅ Produk digital siap kirim otomatis\n` +
-      `💳 Bayar via Pakasir (QR)\n\n` +
+      `👋 Selamat di GOMS APK\n\n` +
+      `✅ Produk APK siap kirim otomatis\n` +
+      `💳 Bayar via (QR)\n\n` +
       `Pilih menu di bawah:`,
     reply_markup: startMenuInline()
   });
