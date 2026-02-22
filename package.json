@@ -1,6 +1,6 @@
 {
   "name": "gomstore-bot",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "main": "service.js",
   "scripts": {
@@ -9,6 +9,8 @@
   "dependencies": {
     "express": "^4.19.2",
     "googleapis": "^140.0.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "qrcode": "^1.5.4",
+    "form-data": "^4.0.0"
   }
 }
