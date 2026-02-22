@@ -39,6 +39,7 @@ const {
   PAKASIR_WEBHOOK_SECRET
 } = process.env;
 
+const ADMIN_ID = String(ADMIN_CHAT_ID);
 const BANNER_URL = process.env.BANNER_URL || "";
 
 /* ================= GOOGLE ================= */
@@ -93,7 +94,7 @@ async function tgJson(method, body) {
 async function tgSendPhotoBuffer(chatId, buffer, caption) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("photo", buffer, { filename: "qris.png", contentType: "image/png" });
+  form.append("photo", buffer, { filename: "qr.png", contentType: "image/png" });
   if (caption) form.append("caption", caption);
 
   const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
@@ -116,20 +117,23 @@ function getHarga(namaProduk) {
   return 15000;
 }
 
-// invoice mengandung index produk: INV{index}-{timestamp}-{rand}
 function makeInvoice(index) {
   const rand = crypto.randomBytes(2).toString("hex").toUpperCase();
   return `INV${index}-${Date.now()}-${rand}`;
 }
 
+function isAdmin(chatId) {
+  return String(chatId) === ADMIN_ID;
+}
+
 /* ================= UI START ================= */
-function startMenuInline() {
-  return {
-    inline_keyboard: [
-      [{ text: "📦 Produk", callback_data: "MENU_PRODUK" }],
-      [{ text: "ℹ️ Info", callback_data: "MENU_INFO" }, { text: "📌 Cara Order", callback_data: "MENU_CARA" }]
-    ]
-  };
+function startMenuInline(is_admin = false) {
+  const rows = [
+    [{ text: "📦 Produk", callback_data: "MENU_PRODUK" }],
+    [{ text: "ℹ️ Info", callback_data: "MENU_INFO" }, { text: "📌 Cara Order", callback_data: "MENU_CARA" }]
+  ];
+  if (is_admin) rows.push([{ text: "🛠 Admin Panel", callback_data: "ADMIN_PANEL" }]);
+  return { inline_keyboard: rows };
 }
 
 async function sendStart(chatId) {
@@ -137,35 +141,83 @@ async function sendStart(chatId) {
     await tgJson("sendPhoto", {
       chat_id: chatId,
       photo: BANNER_URL,
-      caption: "🎉 Selamat datang di GOMSTORE!"
+      caption: "🎉 Selamat datang!"
     });
   }
 
   await tgJson("sendMessage", {
     chat_id: chatId,
     text:
-      `👋 Selamat di GOMS APK\n\n` +
-      `✅ Produk APK siap kirim otomatis\n` +
-      `💳 Bayar via (QR)\n\n` +
+      `👋 Selamat datang di toko!\n\n` +
+      `✅ Produk digital siap kirim otomatis\n` +
+      `💳 Pembayaran via QR\n\n` +
       `Pilih menu di bawah:`,
-    reply_markup: startMenuInline()
+    reply_markup: startMenuInline(isAdmin(chatId))
   });
 }
 
-/* ================= PRODUK ================= */
-async function getProdukList() {
-  // APK NONTON: A nama, B link, C deskripsi
-  const rows = await readSheet("APK NONTON!A2:C");
-  return rows.filter(r => (r?.[0] || "").toString().trim() !== "");
+/* ================= PRODUK (APK NONTON) =================
+   Format tab: A Nama, B Link, C Deskripsi, D STOCK (optional)
+   - D kosong / "UNLIMITED" => unlimited
+   - D angka => stok terbatas
+*/
+async function getProdukListWithRowIndex() {
+  // Ambil A:D supaya dapat stock
+  const rows = await readSheet("APK NONTON!A2:D");
+  const list = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const nama = (r[0] || "").toString().trim();
+    if (!nama) continue;
+
+    const link = (r[1] || "").toString().trim();
+    const desk = (r[2] || "").toString().trim();
+    const stockRaw = (r[3] || "").toString().trim();
+
+    list.push({
+      rowIndex: i + 2, // karena mulai A2
+      nama,
+      link,
+      desk,
+      stockRaw
+    });
+  }
+  return list;
+}
+
+function parseStock(stockRaw) {
+  const s = (stockRaw || "").toString().trim().toUpperCase();
+  if (!s || s === "UNLIMITED" || s === "∞") return { mode: "UNLIMITED", value: null };
+  const n = Number(s);
+  if (Number.isFinite(n)) return { mode: "LIMITED", value: Math.max(0, Math.floor(n)) };
+  return { mode: "UNLIMITED", value: null };
+}
+
+function stockText(stockRaw) {
+  const st = parseStock(stockRaw);
+  if (st.mode === "UNLIMITED") return "♾️ Ready";
+  return st.value > 0 ? `🟢 Stok: ${st.value}` : "🔴 Stok habis";
 }
 
 async function sendProduk(chatId) {
-  const list = await getProdukList();
-  const buttons = list.map((r, i) => ([{ text: r[0], callback_data: "BUY_" + i }]));
+  const list = await getProdukListWithRowIndex();
+
+  const buttons = [];
+  let text = "📦 List Produk:\n\n";
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    const st = parseStock(p.stockRaw);
+    const harga = getHarga(p.nama);
+    text += `• ${p.nama} — ${rupiah(harga)} — ${stockText(p.stockRaw)}\n`;
+    const canBuy = st.mode === "UNLIMITED" || (st.value && st.value > 0);
+    if (canBuy) buttons.push([{ text: `Beli ${p.nama}`, callback_data: "BUY_" + i }]);
+  }
+
+  text += "\nKlik tombol untuk beli.";
 
   await tgJson("sendMessage", {
     chat_id: chatId,
-    text: "📦 Pilih produk:",
+    text,
     reply_markup: { inline_keyboard: buttons }
   });
 }
@@ -217,12 +269,14 @@ async function setOrderStatus(rowIndex, status) {
   }
 }
 
-/* ================= PAKASIR ================= */
-function pakasirPayUrl(amount, orderId) {
+/* ================= PAYMENT (under the hood) =================
+   Tampilan ke user: "Pembayaran via QR"
+*/
+function payUrl(amount, orderId) {
   return `https://app.pakasir.com/pay/${encodeURIComponent(PAKASIR_SLUG)}/${amount}?order_id=${encodeURIComponent(orderId)}`;
 }
 
-async function pakasirTransactionDetail(amount, orderId) {
+async function transactionDetail(amount, orderId) {
   const url =
     `https://app.pakasir.com/api/transactiondetail` +
     `?project=${encodeURIComponent(PAKASIR_SLUG)}` +
@@ -234,40 +288,58 @@ async function pakasirTransactionDetail(amount, orderId) {
   return await r.json();
 }
 
+/* ================= STOCK UPDATE =================
+   Kolom D adalah STOCK. RowIndex produk ada di object produk.
+*/
+async function setStockByRow(rowIndex, newValue) {
+  // D{rowIndex}
+  await updateCell("APK NONTON", `D${rowIndex}`, newValue);
+}
+
+async function decrementStockIfLimited(product) {
+  const st = parseStock(product.stockRaw);
+  if (st.mode === "UNLIMITED") return; // tidak berkurang
+
+  const next = Math.max(0, (st.value || 0) - 1);
+  await setStockByRow(product.rowIndex, String(next));
+}
+
 /* ================= CHECKOUT (QR + BUTTONS) ================= */
 async function startCheckout(chatId, username, index) {
-  const list = await getProdukList();
+  const list = await getProdukListWithRowIndex();
   const produk = list[index];
   if (!produk) return;
 
-  const nama = (produk[0] || "").toString().trim();
-  const harga = getHarga(nama);
+  const st = parseStock(produk.stockRaw);
+  if (st.mode === "LIMITED" && (!st.value || st.value <= 0)) {
+    await tgJson("sendMessage", { chat_id: chatId, text: "Maaf, stok habis 🙏" });
+    return;
+  }
 
+  const harga = getHarga(produk.nama);
   const invoice = makeInvoice(index);
-  const payUrl = pakasirPayUrl(harga, invoice);
+  const url = payUrl(harga, invoice);
 
-  // simpan order PENDING
   await createPendingOrder({
     invoice,
     chatId,
     username: username || "",
     productIndex: index,
-    productName: nama,
+    productName: produk.nama,
     amount: harga
   });
 
-  // QR bayar
-  const pngBuffer = await QRCode.toBuffer(payUrl, { type: "png", width: 700, margin: 1 });
+  const pngBuffer = await QRCode.toBuffer(url, { type: "png", width: 700, margin: 1 });
 
   const caption =
     `🧾 Invoice: ${invoice}\n` +
-    `📦 Produk: ${nama}\n` +
+    `📦 Produk: ${produk.nama}\n` +
     `💰 Total: ${rupiah(harga)}\n\n` +
-    `Scan QR untuk bayar, atau klik:\n${payUrl}`;
+    `✅ Pembayaran via QR\n` +
+    `Atau klik link:\n${url}`;
 
   await tgSendPhotoBuffer(chatId, pngBuffer, caption);
 
-  // tombol status & batal
   await tgJson("sendMessage", {
     chat_id: chatId,
     text: "Menu order:",
@@ -279,9 +351,10 @@ async function startCheckout(chatId, username, index) {
     }
   });
 
+  // admin notif order baru
   await tgJson("sendMessage", {
     chat_id: ADMIN_CHAT_ID,
-    text: `🆕 Order baru\nInvoice: ${invoice}\nProduk: ${nama}\nUser: @${username || "-"}\nTotal: ${rupiah(harga)}`
+    text: `🆕 Order baru\nInvoice: ${invoice}\nProduk: ${produk.nama}\nUser: @${username || "-"}\nTotal: ${rupiah(harga)}`
   });
 }
 
@@ -295,21 +368,18 @@ async function checkOrderStatus(chatId, invoice) {
 
   const stLocal = String(order.status || "").toUpperCase();
   if (stLocal === "PAID") {
-    await tgJson("sendMessage", { chat_id: chatId, text: `✅ Status ${invoice}: PAID` });
+    await tgJson("sendMessage", { chat_id: chatId, text: `✅ Status ${invoice}: BERHASIL` });
     return;
   }
   if (stLocal === "CANCELLED") {
-    await tgJson("sendMessage", { chat_id: chatId, text: `❌ Status ${invoice}: CANCELLED` });
+    await tgJson("sendMessage", { chat_id: chatId, text: `❌ Status ${invoice}: DIBATALKAN` });
     return;
   }
 
-  const detail = await pakasirTransactionDetail(order.amount, invoice);
+  const detail = await transactionDetail(order.amount, invoice);
   const st = String(detail?.transaction?.status || detail?.status || "unknown").toLowerCase();
 
-  await tgJson("sendMessage", {
-    chat_id: chatId,
-    text: `Status ${invoice}: ${st}`
-  });
+  await tgJson("sendMessage", { chat_id: chatId, text: `Status ${invoice}: ${st}` });
 }
 
 async function cancelOrder(chatId, invoice) {
@@ -318,19 +388,16 @@ async function cancelOrder(chatId, invoice) {
     await tgJson("sendMessage", { chat_id: chatId, text: "Order tidak ditemukan." });
     return;
   }
-
   if (String(order.chat_id) !== String(chatId)) {
     await tgJson("sendMessage", { chat_id: chatId, text: "Order ini bukan milik kamu." });
     return;
   }
-
   if (String(order.status).toUpperCase() === "PAID") {
-    await tgJson("sendMessage", { chat_id: chatId, text: "Order sudah PAID, tidak bisa dibatalkan." });
+    await tgJson("sendMessage", { chat_id: chatId, text: "Order sudah berhasil, tidak bisa dibatalkan." });
     return;
   }
 
   await setOrderStatus(order.rowIndex, "CANCELLED");
-
   await tgJson("sendMessage", { chat_id: chatId, text: `✅ Order ${invoice} dibatalkan.` });
 
   await tgJson("sendMessage", {
@@ -345,7 +412,7 @@ async function deliver(invoice, amountFromWebhook) {
   if (!order) {
     await tgJson("sendMessage", {
       chat_id: ADMIN_CHAT_ID,
-      text: `⚠️ PAID tapi order tidak ketemu di ${SHEET_ORDERS_TAB}\nInvoice: ${invoice}\nAmount: ${amountFromWebhook}`
+      text: `⚠️ Pembayaran masuk tapi order tidak ketemu\nInvoice: ${invoice}\nAmount: ${amountFromWebhook}`
     });
     return;
   }
@@ -355,7 +422,7 @@ async function deliver(invoice, amountFromWebhook) {
   if (stLocal === "CANCELLED") {
     await tgJson("sendMessage", {
       chat_id: ADMIN_CHAT_ID,
-      text: `⚠️ PAID masuk tapi order sudah CANCELLED\nInvoice: ${invoice}`
+      text: `⚠️ Pembayaran masuk tapi order sudah dibatalkan\nInvoice: ${invoice}`
     });
     return;
   }
@@ -368,7 +435,7 @@ async function deliver(invoice, amountFromWebhook) {
     return;
   }
 
-  const list = await getProdukList();
+  const list = await getProdukListWithRowIndex();
   const produk = list[order.product_index];
   if (!produk) {
     await tgJson("sendMessage", {
@@ -378,17 +445,16 @@ async function deliver(invoice, amountFromWebhook) {
     return;
   }
 
-  const nama = (produk[0] || "").toString().trim();
-  const link = (produk[1] || "").toString().trim();
-  const desk = (produk[2] || "").toString().trim();
-
   // set PAID
   await setOrderStatus(order.rowIndex, "PAID");
+
+  // kurangi stok kalau LIMITED
+  await decrementStockIfLimited(produk);
 
   // catat TRANSAKSI (A-E)
   await appendRow("TRANSAKSI", [
     new Date().toISOString(),
-    nama,
+    produk.nama,
     order.username ? `@${order.username}` : "-",
     invoice,
     String(order.amount)
@@ -398,26 +464,102 @@ async function deliver(invoice, amountFromWebhook) {
   await tgJson("sendMessage", {
     chat_id: order.chat_id,
     text:
-      `✅ Pembayaran berhasil!\n\n` +
-      `📦 Produk: ${nama}\n` +
+      `✅ Transaksi berhasil!\n\n` +
+      `📦 Produk: ${produk.nama}\n` +
       `🧾 Invoice: ${invoice}\n` +
       `💰 Total: ${rupiah(order.amount)}\n\n` +
-      `🔗 Link Download:\n${link}\n\n` +
-      (desk ? `📝 Deskripsi:\n${desk}\n\n` : "") +
+      `🔗 Link Download:\n${produk.link}\n\n` +
+      (produk.desk ? `📝 Deskripsi:\n${produk.desk}\n\n` : "") +
       `Terima kasih 🙏`
   });
 
-  // notif admin transaksi berhasil
+  // ADMIN notif transaksi berhasil
   await tgJson("sendMessage", {
     chat_id: ADMIN_CHAT_ID,
     text:
       `✅ TRANSAKSI BERHASIL\n\n` +
       `Invoice: ${invoice}\n` +
-      `Produk: ${nama}\n` +
+      `Produk: ${produk.nama}\n` +
       `User: @${order.username || "-"}\n` +
       `Total: ${rupiah(order.amount)}\n` +
-      `Chat ID: ${order.chat_id}`
+      `Sisa stok: ${stockText((await getProdukListWithRowIndex())[order.product_index]?.stockRaw)}`
   });
+}
+
+/* ================= ADMIN PANEL ================= */
+async function adminPanel(chatId) {
+  if (!isAdmin(chatId)) return;
+
+  const list = await getProdukListWithRowIndex();
+  const buttons = list.map((p, i) => ([{ text: `✏️ Stok ${p.nama}`, callback_data: `ADMIN_STOCK_${i}` }]));
+
+  await tgJson("sendMessage", {
+    chat_id: chatId,
+    text: "🛠 Admin Panel\nPilih produk untuk edit stok:",
+    reply_markup: { inline_keyboard: buttons }
+  });
+}
+
+async function adminStockMenu(chatId, index) {
+  if (!isAdmin(chatId)) return;
+
+  const list = await getProdukListWithRowIndex();
+  const p = list[index];
+  if (!p) return;
+
+  const st = parseStock(p.stockRaw);
+  const info = st.mode === "UNLIMITED" ? "UNLIMITED" : String(st.value);
+
+  await tgJson("sendMessage", {
+    chat_id: chatId,
+    text: `📦 ${p.nama}\nStok sekarang: ${info}\n\nPilih aksi:`,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "➕ +1", callback_data: `ADMIN_STOCK_ADD_${index}` },
+          { text: "➖ -1", callback_data: `ADMIN_STOCK_SUB_${index}` }
+        ],
+        [
+          { text: "♾️ Set UNLIMITED", callback_data: `ADMIN_STOCK_UNL_${index}` },
+          { text: "0️⃣ Set 0", callback_data: `ADMIN_STOCK_SET0_${index}` }
+        ],
+        [{ text: "🔙 Kembali", callback_data: "ADMIN_PANEL" }]
+      ]
+    }
+  });
+}
+
+async function adminStockUpdate(chatId, action, index) {
+  if (!isAdmin(chatId)) return;
+
+  const list = await getProdukListWithRowIndex();
+  const p = list[index];
+  if (!p) return;
+
+  const st = parseStock(p.stockRaw);
+
+  if (action === "UNL") {
+    await setStockByRow(p.rowIndex, "UNLIMITED");
+  } else if (action === "SET0") {
+    await setStockByRow(p.rowIndex, "0");
+  } else if (action === "ADD") {
+    if (st.mode === "UNLIMITED") {
+      // biarkan unlimited
+      await setStockByRow(p.rowIndex, "UNLIMITED");
+    } else {
+      await setStockByRow(p.rowIndex, String((st.value || 0) + 1));
+    }
+  } else if (action === "SUB") {
+    if (st.mode === "UNLIMITED") {
+      // kalau unlimited dikurangi -> set 0 (biar jelas)
+      await setStockByRow(p.rowIndex, "0");
+    } else {
+      await setStockByRow(p.rowIndex, String(Math.max(0, (st.value || 0) - 1)));
+    }
+  }
+
+  await tgJson("sendMessage", { chat_id: chatId, text: "✅ Stok berhasil diupdate." });
+  await adminStockMenu(chatId, index);
 }
 
 /* ================= ROUTES ================= */
@@ -432,6 +574,12 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
       return res.sendStatus(200);
     }
 
+    // optional: admin bisa ketik /admin
+    if (update.message?.text === "/admin") {
+      if (isAdmin(update.message.chat.id)) await adminPanel(update.message.chat.id);
+      return res.sendStatus(200);
+    }
+
     if (update.callback_query) {
       const chatId = update.callback_query.message.chat.id;
       const data = update.callback_query.data;
@@ -439,37 +587,68 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
 
       await tgJson("answerCallbackQuery", { callback_query_id: update.callback_query.id });
 
-      if (data === "MENU_PRODUK") {
-        await sendProduk(chatId);
-        return res.sendStatus(200);
-      }
+      // Menu utama
+      if (data === "MENU_PRODUK") { await sendProduk(chatId); return res.sendStatus(200); }
       if (data === "MENU_INFO") {
         await tgJson("sendMessage", {
           chat_id: chatId,
-          text: "ℹ️ INFO\n\n• Pembayaran via Pakasir\n• Link otomatis dikirim setelah sukses\n• Jika kendala, chat admin."
+          text: "ℹ️ INFO\n\n• Pembayaran via QR\n• Link dikirim otomatis setelah berhasil\n• Jika kendala, hubungi admin."
         });
         return res.sendStatus(200);
       }
       if (data === "MENU_CARA") {
         await tgJson("sendMessage", {
           chat_id: chatId,
-          text: "📌 CARA ORDER\n\n1) Klik 📦 Produk\n2) Pilih produk\n3) Scan QR / klik bayar\n4) Setelah sukses, link otomatis dikirim ✅"
+          text: "📌 CARA ORDER\n\n1) Klik 📦 Produk\n2) Pilih produk\n3) Scan QR / klik link bayar\n4) Setelah berhasil, link otomatis dikirim ✅"
         });
         return res.sendStatus(200);
       }
 
+      // Admin panel
+      if (data === "ADMIN_PANEL") { await adminPanel(chatId); return res.sendStatus(200); }
+
+      if (data.startsWith("ADMIN_STOCK_") && !data.startsWith("ADMIN_STOCK_ADD_") && !data.startsWith("ADMIN_STOCK_SUB_") && !data.startsWith("ADMIN_STOCK_UNL_") && !data.startsWith("ADMIN_STOCK_SET0_")) {
+        const index = Number(data.replace("ADMIN_STOCK_", ""));
+        await adminStockMenu(chatId, index);
+        return res.sendStatus(200);
+      }
+
+      if (data.startsWith("ADMIN_STOCK_ADD_")) {
+        const index = Number(data.replace("ADMIN_STOCK_ADD_", ""));
+        await adminStockUpdate(chatId, "ADD", index);
+        return res.sendStatus(200);
+      }
+      if (data.startsWith("ADMIN_STOCK_SUB_")) {
+        const index = Number(data.replace("ADMIN_STOCK_SUB_", ""));
+        await adminStockUpdate(chatId, "SUB", index);
+        return res.sendStatus(200);
+      }
+      if (data.startsWith("ADMIN_STOCK_UNL_")) {
+        const index = Number(data.replace("ADMIN_STOCK_UNL_", ""));
+        await adminStockUpdate(chatId, "UNL", index);
+        return res.sendStatus(200);
+      }
+      if (data.startsWith("ADMIN_STOCK_SET0_")) {
+        const index = Number(data.replace("ADMIN_STOCK_SET0_", ""));
+        await adminStockUpdate(chatId, "SET0", index);
+        return res.sendStatus(200);
+      }
+
+      // Beli
       if (data.startsWith("BUY_")) {
         const index = Number(data.replace("BUY_", ""));
         await startCheckout(chatId, username, index);
         return res.sendStatus(200);
       }
 
+      // Cek status
       if (data.startsWith("CHECK_")) {
         const invoice = data.replace("CHECK_", "");
         await checkOrderStatus(chatId, invoice);
         return res.sendStatus(200);
       }
 
+      // Cancel
       if (data.startsWith("CANCEL_")) {
         const invoice = data.replace("CANCEL_", "");
         await cancelOrder(chatId, invoice);
@@ -491,14 +670,14 @@ app.post(`/pakasir/webhook/${PAKASIR_WEBHOOK_SECRET}`, async (req, res) => {
 
     if (!order_id || !amount) return;
 
-    // validasi ke Pakasir (lebih aman)
-    const detail = await pakasirTransactionDetail(amount, order_id);
+    // validasi via transactiondetail
+    const detail = await transactionDetail(amount, order_id);
     const status = String(detail?.transaction?.status || "").toLowerCase();
     if (status !== "completed") return;
 
     await deliver(order_id, amount);
   } catch (e) {
-    console.error("pakasir error:", e);
+    console.error("payment webhook error:", e);
   }
 });
 
