@@ -461,14 +461,14 @@ app.post("/", async (req, res) => {
 
     res.sendStatus(200);
 
-  } catch (err) {
-    console.log("ERROR:", err.message);
-    res.sendStatus(200);
-  }
-});
+} catch (err) {
+  console.log("ERROR:", err.message);
+  res.sendStatus(200);
+}
+}); // ✅ INI PENUTUP app.post WEBHOOK TELEGRAM (yang kurang)
 
-/* ================= SERVER ================= */
 
+// ================== SERVER ==================
 app.get("/", (req, res) => res.send("BOT RUNNING"));
 
 app.listen(process.env.PORT || 3000, () => {
