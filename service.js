@@ -54,7 +54,9 @@ let CATEGORIES = CATEGORY_TABS.split(",").map((s) => s.trim()).filter(Boolean);
  */
 const app = express();
 app.use(express.json());
-
+// ===== TEST ROUTE (biar webhook nggak 404) =====
+app.get("/", (req, res) => res.status(200).send("OK"));
+app.get(`/telegram/webhook/${WEBHOOK_SECRET}`, (req, res) => res.status(200).send("TG OK"));
 /**
  * =========================
  * GOOGLE SHEETS
