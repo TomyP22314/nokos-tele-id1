@@ -26,17 +26,17 @@ function assertEnv() {
 }
 assertEnv();
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-const ADMIN_CHAT_ID = String(process.env.ADMIN_CHAT_ID);
-const SHEET_ID = process.env.SHEET_ID;
+const BOT_TOKEN = String(process.env.BOT_TOKEN).trim();
+const WEBHOOK_SECRET = String(process.env.WEBHOOK_SECRET).trim();
+const ADMIN_CHAT_ID = String(process.env.ADMIN_CHAT_ID).trim();
+const SHEET_ID = String(process.env.SHEET_ID).trim();
 
 // Payment gateway (JANGAN disebut di UI)
-const PAYMENT_PROJECT_SLUG = process.env.PAYMENT_PROJECT_SLUG;
-const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY;
-const PAYMENT_WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET;
+const PAYMENT_PROJECT_SLUG = String(process.env.PAYMENT_PROJECT_SLUG).trim();
+const PAYMENT_API_KEY = String(process.env.PAYMENT_API_KEY).trim();
+const PAYMENT_WEBHOOK_SECRET = String(process.env.PAYMENT_WEBHOOK_SECRET).trim();
 
-const CATEGORY_TABS = process.env.CATEGORY_TABS;
+const CATEGORY_TABS = String(process.env.CATEGORY_TABS || "").trim();
 
 // Tabs fixed
 const TAB_TX = "TRANSAKSI";
@@ -54,9 +54,20 @@ let CATEGORIES = CATEGORY_TABS.split(",").map((s) => s.trim()).filter(Boolean);
  */
 const app = express();
 app.use(express.json());
-// ===== TEST ROUTE (biar webhook nggak 404) =====
+
+// Log semua request biar keliatan webhook masuk di Render Logs
+app.use((req, _res, next) => {
+  console.log("REQ:", req.method, req.url);
+  next();
+});
+
+// Health check
 app.get("/", (req, res) => res.status(200).send("OK"));
+
+// TEST route supaya kamu bisa pastiin secret & path betul (GET)
 app.get(`/telegram/webhook/${WEBHOOK_SECRET}`, (req, res) => res.status(200).send("TG OK"));
+app.get(`/payment/webhook/${PAYMENT_WEBHOOK_SECRET}`, (req, res) => res.status(200).send("PAY OK"));
+
 /**
  * =========================
  * GOOGLE SHEETS
@@ -70,17 +81,12 @@ function getGoogleAuth() {
     scopes: ["https://www.googleapis.com/auth/spreadsheets"]
   });
 }
-
 const sheets = google.sheets({ version: "v4", auth: getGoogleAuth() });
 
 async function readRange(rangeA1) {
-  const r = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: rangeA1
-  });
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: rangeA1 });
   return r.data.values || [];
 }
-
 async function appendRow(tab, row) {
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
@@ -89,7 +95,6 @@ async function appendRow(tab, row) {
     requestBody: { values: [row] }
   });
 }
-
 async function updateCell(tab, a1, value) {
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
@@ -118,16 +123,13 @@ async function tg(method, body) {
 function isAdmin(chatId) {
   return String(chatId) === String(ADMIN_CHAT_ID);
 }
-
 function rupiah(n) {
   return "Rp " + Number(n || 0).toLocaleString("id-ID");
 }
-
 function makeInvoice() {
   const rand = crypto.randomBytes(2).toString("hex").toUpperCase();
   return `TX${Date.now()}${rand}`;
 }
-
 function formatIDDateTime(d = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
   const day = pad(d.getDate());
@@ -137,12 +139,8 @@ function formatIDDateTime(d = new Date()) {
   const min = pad(d.getMinutes());
   return `${day}/${month}/${year} ${hour}.${min}`;
 }
-
 function formatIDDateTimeLong(d = new Date()) {
-  const months = [
-    "Januari","Februari","Maret","April","Mei","Juni",
-    "Juli","Agustus","September","Oktober","November","Desember"
-  ];
+  const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
@@ -161,7 +159,6 @@ function welcomeText() {
     `Klik *🗂 Kategori* untuk mulai belanja 👇`
   );
 }
-
 function howToText() {
   return (
     `📌 *Cara Order*\n\n` +
@@ -173,7 +170,6 @@ function howToText() {
     `Cek status: \`/cek TX...\``
   );
 }
-
 function helpText() {
   return (
     `👨‍💻 *Bantuan*\n\n` +
@@ -184,7 +180,6 @@ function helpText() {
     `Cek status: \`/cek TX...\``
   );
 }
-
 function mainMenuKeyboard(admin = false) {
   const base = [
     [{ text: "🗂 Kategori" }, { text: "🧾 Cek Pesanan" }],
@@ -209,12 +204,10 @@ function parseStock(v) {
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
-
 function stockText(stock) {
   if (stock === "UNLIMITED") return "∞ Ready";
   return Number(stock) > 0 ? `${stock} Ready` : "0 (Habis)";
 }
-
 async function getProducts(tabName) {
   const values = await readRange(`${tabName}!A:F`);
   if (values.length <= 1) return [];
@@ -239,7 +232,6 @@ async function getProducts(tabName) {
   }
   return out;
 }
-
 async function findProductById(productId) {
   for (const tab of CATEGORIES) {
     const products = await getProducts(tab);
@@ -252,8 +244,7 @@ async function findProductById(productId) {
 /**
  * =========================
  * MEMBER (broadcast)
- * MEMBER LIST: simpan chat_id di kolom C (sesuai sheet kamu)
- * Header: A NOMOR | B TANGGAL GABUNG | C USERNAME/ID MEMBER
+ * MEMBER LIST: simpan chat_id di kolom C
  * =========================
  */
 async function ensureMember(chatId) {
@@ -270,37 +261,22 @@ async function ensureMember(chatId) {
   await appendRow(TAB_MEMBER, [String(nomor), new Date().toISOString().slice(0, 10), key]);
   return true;
 }
-
 async function getAllMemberChatIds() {
   const values = await readRange(`${TAB_MEMBER}!A:C`);
   if (values.length <= 1) return [];
-  return values
-    .slice(1)
-    .map((r) => String(r[2] || "").trim())
-    .filter((x) => /^\d+$/.test(x));
+  return values.slice(1).map((r) => String(r[2] || "").trim()).filter((x) => /^\d+$/.test(x));
 }
 
 /**
  * =========================
  * TRANSAKSI
- * TRANSAKSI columns:
  * A TANGGAL | B KATEGORI | C ID PRODUK | D NAMA | E USER | F INVOICE | G HARGA | H STATUS
  * =========================
  */
 async function createTx({ product, chatId, username, invoice }) {
   const buyer = `${username ? "@" + username : "-"} | ${chatId}`;
-  await appendRow(TAB_TX, [
-    new Date().toISOString(),
-    product.tabName,
-    product.id,
-    product.name,
-    buyer,
-    invoice,
-    String(product.price),
-    "PENDING"
-  ]);
+  await appendRow(TAB_TX, [new Date().toISOString(), product.tabName, product.id, product.name, buyer, invoice, String(product.price), "PENDING"]);
 }
-
 async function findTxByInvoice(invoice) {
   const values = await readRange(`${TAB_TX}!A:H`);
   if (values.length <= 1) return null;
@@ -326,22 +302,11 @@ async function findTxByInvoice(invoice) {
   }
   return null;
 }
-
 async function setTxStatus(rowIndex, status) {
   await updateCell(TAB_TX, `H${rowIndex}`, status);
 }
-
 async function copyTxTo(tabName, txRow) {
-  await appendRow(tabName, [
-    txRow.tanggal || new Date().toISOString(),
-    txRow.category,
-    txRow.product_id,
-    txRow.product_name,
-    txRow.buyer,
-    txRow.invoice,
-    String(txRow.price || 0),
-    txRow.status
-  ]);
+  await appendRow(tabName, [txRow.tanggal || new Date().toISOString(), txRow.category, txRow.product_id, txRow.product_name, txRow.buyer, txRow.invoice, String(txRow.price || 0), txRow.status]);
 }
 
 /**
@@ -356,22 +321,12 @@ async function transactionDetail(amount, invoice) {
     `&amount=${encodeURIComponent(amount)}` +
     `&order_id=${encodeURIComponent(invoice)}` +
     `&api_key=${encodeURIComponent(PAYMENT_API_KEY)}`;
-
   const resp = await fetch(url);
   return resp.json().catch(() => ({}));
 }
-
 function extractQrUrl(detail) {
   const t = detail?.transaction || {};
-  return (
-    t.qr_url ||
-    t.qris_url ||
-    t.qrcode_url ||
-    t.qr_image ||
-    detail?.qr_url ||
-    detail?.qris_url ||
-    ""
-  );
+  return t.qr_url || t.qris_url || t.qrcode_url || t.qr_image || detail?.qr_url || detail?.qris_url || "";
 }
 
 /**
@@ -381,45 +336,25 @@ function extractQrUrl(detail) {
  */
 async function sendCategories(chatId) {
   const buttons = CATEGORIES.map((c) => [{ text: `📁 ${c}`, callback_data: `CAT:${c}` }]);
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text: `🗂 *Pilih Kategori*`,
-    parse_mode: "Markdown",
-    reply_markup: { inline_keyboard: buttons }
-  });
+  await tg("sendMessage", { chat_id: chatId, text: `🗂 *Pilih Kategori*`, parse_mode: "Markdown", reply_markup: { inline_keyboard: buttons } });
 }
-
 async function sendCategoryProducts(chatId, category) {
   const products = await getProducts(category);
-  if (!products.length) {
-    await tg("sendMessage", { chat_id: chatId, text: "Belum ada produk di kategori ini." });
-    return;
-  }
+  if (!products.length) return tg("sendMessage", { chat_id: chatId, text: "Belum ada produk di kategori ini." });
 
   let text = `📁 *${category}*\nPilih produk:\n\n`;
   const buttons = [];
-
   for (const p of products) {
     text += `• *${p.name}* — ${rupiah(p.price)} — _${stockText(p.stock)}_\n`;
     buttons.push([{ text: `🛒 ${p.name}`, callback_data: `PROD:${p.id}` }]);
   }
-
   buttons.push([{ text: "⬅️ Kembali", callback_data: "BACK:CATS" }]);
 
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "Markdown",
-    reply_markup: { inline_keyboard: buttons }
-  });
+  await tg("sendMessage", { chat_id: chatId, text, parse_mode: "Markdown", reply_markup: { inline_keyboard: buttons } });
 }
-
 async function sendProductDetail(chatId, productId) {
   const p = await findProductById(productId);
-  if (!p) {
-    await tg("sendMessage", { chat_id: chatId, text: "Produk tidak ditemukan." });
-    return;
-  }
+  if (!p) return tg("sendMessage", { chat_id: chatId, text: "Produk tidak ditemukan." });
 
   const text =
     `📦 *${p.name}*\n\n` +
@@ -432,33 +367,16 @@ async function sendProductDetail(chatId, productId) {
     chat_id: chatId,
     text,
     parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "✅ Beli", callback_data: `BUY:${p.id}` }],
-        [{ text: "⬅️ Kembali", callback_data: `CAT:${p.tabName}` }]
-      ]
-    }
+    reply_markup: { inline_keyboard: [[{ text: "✅ Beli", callback_data: `BUY:${p.id}` }],[{ text: "⬅️ Kembali", callback_data: `CAT:${p.tabName}` }]] }
   });
 }
 
 async function startCheckout(chatId, username, productId) {
   const product = await findProductById(productId);
-  if (!product) {
-    await tg("sendMessage", { chat_id: chatId, text: "Produk tidak ditemukan." });
-    return;
-  }
-
-  if (REQUIRE_MEMBERSHIP) {
-    const ok = await isMember(chatId);
-    if (!ok) {
-      await tg("sendMessage", { chat_id: chatId, text: "❌ Khusus member. Ketik /start dulu." });
-      return;
-    }
-  }
+  if (!product) return tg("sendMessage", { chat_id: chatId, text: "Produk tidak ditemukan." });
 
   if (product.stock !== "UNLIMITED" && Number(product.stock) <= 0) {
-    await tg("sendMessage", { chat_id: chatId, text: `❌ ${product.name} sedang habis.` });
-    return;
+    return tg("sendMessage", { chat_id: chatId, text: `❌ ${product.name} sedang habis.` });
   }
 
   const invoice = makeInvoice();
@@ -495,132 +413,68 @@ async function startCheckout(chatId, username, productId) {
     ]
   };
 
-  // Kirim QR langsung (tanpa web)
   if (qrUrl) {
-    await tg("sendPhoto", {
-      chat_id: chatId,
-      photo: qrUrl,
-      caption,
-      parse_mode: "Markdown",
-      reply_markup: markup
-    });
+    await tg("sendPhoto", { chat_id: chatId, photo: qrUrl, caption, parse_mode: "Markdown", reply_markup: markup });
   } else {
-    // fallback kalau API tidak kasih qr url image
-    await tg("sendMessage", {
-      chat_id: chatId,
-      text:
-        caption +
-        `\n\n⚠️ QR belum tersedia. Klik *Cek Status* beberapa saat lagi.`,
-      parse_mode: "Markdown",
-      reply_markup: markup
-    });
+    await tg("sendMessage", { chat_id: chatId, text: caption + `\n\n⚠️ QR belum tersedia. Klik *Cek Status* beberapa saat lagi.`, parse_mode: "Markdown", reply_markup: markup });
   }
 
-  // notify admin
   await tg("sendMessage", {
     chat_id: ADMIN_CHAT_ID,
-    text:
-      `🆕 Order baru\n` +
-      `Produk: ${product.name}\n` +
-      `Invoice: ${invoice}\n` +
-      `User: @${username || "-"} | ${chatId}\n` +
-      `Total: ${rupiah(product.price)}`
+    text: `🆕 Order baru\nProduk: ${product.name}\nInvoice: ${invoice}\nUser: @${username || "-"} | ${chatId}\nTotal: ${rupiah(product.price)}`
   });
 }
 
 async function checkStatus(chatId, invoice) {
   const tx = await findTxByInvoice(invoice);
-  if (!tx) {
-    await tg("sendMessage", { chat_id: chatId, text: "Invoice tidak ditemukan." });
-    return;
-  }
+  if (!tx) return tg("sendMessage", { chat_id: chatId, text: "Invoice tidak ditemukan." });
 
   const detail = await transactionDetail(tx.price, invoice);
   const status = String(detail?.transaction?.status || detail?.status || "unknown").toUpperCase();
 
   await tg("sendMessage", {
     chat_id: chatId,
-    text:
-      `🧾 *Status Pesanan*\n\n` +
-      `Invoice: \`${invoice}\`\n` +
-      `Produk: *${tx.product_name}*\n` +
-      `Total: *${rupiah(tx.price)}*\n` +
-      `Status: *${status}*`,
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "🔄 Cek Lagi", callback_data: `CHECK:${invoice}` }],
-        [{ text: "🗂 Kategori", callback_data: "BACK:CATS" }]
-      ]
-    }
+    text: `🧾 *Status Pesanan*\n\nInvoice: \`${invoice}\`\nProduk: *${tx.product_name}*\nTotal: *${rupiah(tx.price)}*\nStatus: *${status}*`,
+    parse_mode: "Markdown"
   });
 }
 
 async function cancelInvoice(chatId, invoice) {
   const tx = await findTxByInvoice(invoice);
-  if (!tx) {
-    await tg("sendMessage", { chat_id: chatId, text: "Invoice tidak ditemukan." });
-    return;
-  }
+  if (!tx) return tg("sendMessage", { chat_id: chatId, text: "Invoice tidak ditemukan." });
 
-  if (String(tx.chat_id) !== String(chatId)) {
-    await tg("sendMessage", { chat_id: chatId, text: "Invoice ini bukan milik kamu." });
-    return;
-  }
+  if (String(tx.chat_id) !== String(chatId)) return tg("sendMessage", { chat_id: chatId, text: "Invoice ini bukan milik kamu." });
 
   const st = String(tx.status || "").toUpperCase();
-  if (st === "SUCCESS" || st === "PAID") {
-    await tg("sendMessage", { chat_id: chatId, text: "Invoice sudah berhasil, tidak bisa dibatalkan." });
-    return;
-  }
+  if (st === "SUCCESS" || st === "PAID") return tg("sendMessage", { chat_id: chatId, text: "Invoice sudah berhasil, tidak bisa dibatalkan." });
 
   tx.status = "CANCELLED";
   await setTxStatus(tx.rowIndex, "CANCELLED");
   await copyTxTo(TAB_FAIL, tx);
-
   await tg("sendMessage", { chat_id: chatId, text: `✅ Invoice ${invoice} dibatalkan.` });
 }
 
 async function deliverPaid(invoice, amount) {
   const tx = await findTxByInvoice(invoice);
-  if (!tx) {
-    await tg("sendMessage", {
-      chat_id: ADMIN_CHAT_ID,
-      text: `⚠️ Pembayaran sukses tapi invoice tidak ada di sheet\nInvoice: ${invoice}\nAmount: ${amount}`
-    });
-    return;
-  }
+  if (!tx) return tg("sendMessage", { chat_id: ADMIN_CHAT_ID, text: `⚠️ Pembayaran sukses tapi invoice tidak ada di sheet\nInvoice: ${invoice}\nAmount: ${amount}` });
 
   if (String(tx.status).toUpperCase() === "SUCCESS") return;
 
   const product = await findProductById(tx.product_id);
-
   if (!product) {
     tx.status = "SUCCESS";
     await setTxStatus(tx.rowIndex, "SUCCESS");
     await copyTxTo(TAB_SUCCESS, tx);
-
-    await tg("sendMessage", {
-      chat_id: tx.chat_id,
-      text: `✅ Pembayaran sukses.\nNamun produk tidak ditemukan di sheet. Hubungi admin.\nInvoice: ${invoice}`
-    });
-    return;
+    return tg("sendMessage", { chat_id: tx.chat_id, text: `✅ Pembayaran sukses.\nNamun produk tidak ditemukan di sheet. Hubungi admin.\nInvoice: ${invoice}` });
   }
 
   if (Number(product.price) !== Number(amount)) {
-    await tg("sendMessage", {
-      chat_id: ADMIN_CHAT_ID,
-      text: `⚠️ Amount mismatch\nInvoice: ${invoice}\nPrice: ${product.price}\nWebhook: ${amount}`
-    });
-    return;
+    return tg("sendMessage", { chat_id: ADMIN_CHAT_ID, text: `⚠️ Amount mismatch\nInvoice: ${invoice}\nPrice: ${product.price}\nWebhook: ${amount}` });
   }
 
-  // Kurangi stok jika numeric
   if (product.stock !== "UNLIMITED") {
     const current = Number(product.stock || 0);
-    if (current > 0) {
-      await updateCell(product.tabName, `E${product.rowIndex}`, String(current - 1));
-    }
+    if (current > 0) await updateCell(product.tabName, `E${product.rowIndex}`, String(current - 1));
   }
 
   tx.status = "SUCCESS";
@@ -637,174 +491,17 @@ async function deliverPaid(invoice, amount) {
       `🔗 *Link Download:*\n${product.link || "(link kosong di sheet)"}\n\n` +
       `Terima kasih 🙏`
   });
-
-  await tg("sendMessage", {
-    chat_id: ADMIN_CHAT_ID,
-    text:
-      `✅ Transaksi berhasil\n` +
-      `Produk: ${product.name}\n` +
-      `Invoice: ${invoice}\n` +
-      `Pembeli: ${tx.buyer}\n` +
-      `Total: ${rupiah(product.price)}`
-  });
 }
 
 /**
  * =========================
- * ADMIN PANEL + COMMANDS
+ * ROUTES - Telegram Webhook
  * =========================
- */
-async function sendAdminPanel(chatId) {
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text: "🛠 *Panel Admin GOMS APK*\nPilih menu:",
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "💰 Kelola Harga", callback_data: "AD:PRICE" }],
-        [{ text: "📦 Kelola Stock", callback_data: "AD:STOCK" }],
-        [{ text: "📣 Broadcast", callback_data: "AD:BROADCAST" }],
-        [{ text: "🧾 Riwayat Transaksi", callback_data: "AD:TXHIST" }],
-        [{ text: "📊 Dashboard", callback_data: "AD:DASH" }],
-        [{ text: "🗂 Data Category", callback_data: "AD:CATS" }]
-      ]
-    }
-  });
-}
-
-async function adminShowCategories(chatId) {
-  let text = `🗂 Data Category:\n\n`;
-  for (const c of CATEGORIES) text += `• ${c}\n`;
-  await tg("sendMessage", { chat_id: chatId, text });
-}
-
-async function adminTxHistory(chatId) {
-  const values = await readRange(`${TAB_TX}!A:H`);
-  if (values.length <= 1) {
-    await tg("sendMessage", { chat_id: chatId, text: "Belum ada transaksi." });
-    return;
-  }
-  const rows = values.slice(-10);
-  let text = "🧾 10 Transaksi terakhir:\n\n";
-  for (const r of rows) {
-    text += `• ${r[5]} | ${r[3]} | ${r[7]}\n`;
-  }
-  await tg("sendMessage", { chat_id: chatId, text });
-}
-
-async function adminDashboard(chatId) {
-  const ok = await readRange(`${TAB_SUCCESS}!A:H`);
-  const fail = await readRange(`${TAB_FAIL}!A:H`);
-  const totalOk = Math.max(0, ok.length - 1);
-  const totalFail = Math.max(0, fail.length - 1);
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text: `📊 Dashboard\n\n✅ Berhasil: ${totalOk}\n❌ Gagal/CANCEL: ${totalFail}`
-  });
-}
-
-async function adminAskBroadcast(chatId) {
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text: "📣 Broadcast\nKetik:\n/broadcast pesan kamu"
-  });
-}
-
-async function adminDoBroadcast(chatId, message) {
-  const ids = await getAllMemberChatIds();
-  let sent = 0;
-  for (const id of ids) {
-    try {
-      await tg("sendMessage", { chat_id: id, text: message });
-      sent++;
-    } catch {}
-  }
-  await tg("sendMessage", { chat_id: chatId, text: `✅ Broadcast terkirim ke ${sent} member.` });
-}
-
-/**
- * /addcategory NAME
- * NOTE: ini hanya update list runtime, untuk permanen kamu ubah ENV CATEGORY_TABS
- */
-async function adminAddCategory(chatId, name) {
-  if (!name) {
-    await tg("sendMessage", { chat_id: chatId, text: "Format: /addcategory NAMA" });
-    return;
-  }
-  if (!CATEGORIES.includes(name)) CATEGORIES.push(name);
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text: `✅ Kategori ditambahkan: ${name}\n\nCatatan: untuk permanen, tambahkan juga ke ENV CATEGORY_TABS`
-  });
-}
-
-/**
- * /addproduct CATEGORY|ID|NAMA|LINK|HARGA|STOCK|DESK
- */
-async function adminAddProductCmd(chatId, raw) {
-  const parts = raw.split("|").map((s) => s.trim());
-  const [cat, id, name, link, price, stock, desc] = parts;
-  if (!cat || !id || !name || !link || !price) {
-    await tg("sendMessage", {
-      chat_id: chatId,
-      text:
-        "Format:\n/addproduct CATEGORY|ID|NAMA|LINK|HARGA|STOCK|DESK\nContoh:\n/addproduct APK NONTON|1|APK DRAKOR ID|https://...|15000|UNLIMITED|Deskripsi..."
-    });
-    return;
-  }
-  await appendRow(cat, [id, name, link, desc || "", stock || "0", String(price)]);
-  await tg("sendMessage", { chat_id: chatId, text: "✅ Produk ditambahkan." });
-}
-
-/**
- * /addstock CATEGORY|ID|JUMLAH
- * /delstock CATEGORY|ID|JUMLAH
- */
-async function adminChangeStockCmd(chatId, raw, delta) {
-  const parts = raw.split("|").map((s) => s.trim());
-  const [cat, id, qtyStr] = parts;
-  const qty = Number(qtyStr || 0);
-
-  if (!cat || !id || !Number.isFinite(qty) || qty <= 0) {
-    await tg("sendMessage", {
-      chat_id: chatId,
-      text: `Format:\n/${delta > 0 ? "addstock" : "delstock"} CATEGORY|ID|JUMLAH\nContoh:\n/${delta > 0 ? "addstock" : "delstock"} APK NONTON|1|5`
-    });
-    return;
-  }
-
-  const products = await getProducts(cat);
-  const p = products.find((x) => String(x.id) === String(id));
-  if (!p) {
-    await tg("sendMessage", { chat_id: chatId, text: "Produk tidak ditemukan." });
-    return;
-  }
-
-  if (p.stock === "UNLIMITED") {
-    await tg("sendMessage", { chat_id: chatId, text: "Stock UNLIMITED, tidak perlu diubah." });
-    return;
-  }
-
-  const next = Math.max(0, Number(p.stock || 0) + delta * qty);
-  await updateCell(cat, `E${p.rowIndex}`, String(next));
-  await tg("sendMessage", { chat_id: chatId, text: `✅ Stock ${p.name} sekarang: ${next}` });
-}
-
-/**
- * =========================
- * ROUTES
- * =========================
- */
-app.get("/", (req, res) => res.status(200).send("OK"));
-
-/**
- * Telegram Webhook
  */
 app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
   try {
     const update = req.body;
 
-    // callback query
     if (update.callback_query) {
       const cq = update.callback_query;
       const chatId = cq.message?.chat?.id;
@@ -822,136 +519,35 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
         await tg("sendMessage", { chat_id: chatId, text: `ID Transaksi:\n\`${inv}\``, parse_mode: "Markdown" });
       } else if (data.startsWith("CHECK:")) await checkStatus(chatId, data.slice(6));
       else if (data.startsWith("CANCEL:")) await cancelInvoice(chatId, data.slice(7));
-      else if (data === "HELP") {
-        await tg("sendMessage", { chat_id: chatId, text: helpText(), parse_mode: "Markdown", reply_markup: mainMenuKeyboard(isAdmin(chatId)) });
-      }
-
-      // admin callbacks
-      if (isAdmin(chatId)) {
-        if (data === "AD:BROADCAST") await adminAskBroadcast(chatId);
-        if (data === "AD:TXHIST") await adminTxHistory(chatId);
-        if (data === "AD:DASH") await adminDashboard(chatId);
-        if (data === "AD:CATS") await adminShowCategories(chatId);
-        // PRICE / STOCK menu bisa dikembangkan lagi kalau kamu mau versi klik-klik
-      }
+      else if (data === "HELP") await tg("sendMessage", { chat_id: chatId, text: helpText(), parse_mode: "Markdown", reply_markup: mainMenuKeyboard(isAdmin(chatId)) });
 
       return res.sendStatus(200);
     }
 
-    // message
     if (update.message) {
       const chatId = update.message.chat.id;
       const text = String(update.message.text || "").trim();
-      const username = update.message.from?.username || "";
       const admin = isAdmin(chatId);
 
-      // /start
       if (text === "/start") {
         await ensureMember(chatId);
-        await tg("sendMessage", {
-          chat_id: chatId,
-          text: welcomeText(),
-          parse_mode: "Markdown",
-          reply_markup: mainMenuKeyboard(admin)
-        });
+        await tg("sendMessage", { chat_id: chatId, text: welcomeText(), parse_mode: "Markdown", reply_markup: mainMenuKeyboard(admin) });
         return res.sendStatus(200);
       }
 
-      // menu buttons
-      if (text === "🗂 Kategori") {
-        await sendCategories(chatId);
-        return res.sendStatus(200);
-      }
+      if (text === "🗂 Kategori") return (await sendCategories(chatId), res.sendStatus(200));
+      if (text === "📌 Cara Order") return (await tg("sendMessage", { chat_id: chatId, text: howToText(), parse_mode: "Markdown", reply_markup: mainMenuKeyboard(admin) }), res.sendStatus(200));
+      if (text === "👨‍💻 Bantuan") return (await tg("sendMessage", { chat_id: chatId, text: helpText(), parse_mode: "Markdown", reply_markup: mainMenuKeyboard(admin) }), res.sendStatus(200));
+      if (text === "🏓 Ping" || text === "/ping") return (await tg("sendMessage", { chat_id: chatId, text: "✅ Bot aktif." }), res.sendStatus(200));
 
-      if (text === "🧾 Cek Pesanan") {
-        await tg("sendMessage", {
-          chat_id: chatId,
-          text: "Ketik:\n/cek TX....\nContoh:\n/cek TX123456...."
-        });
-        return res.sendStatus(200);
-      }
-
-      if (text === "📌 Cara Order") {
-        await tg("sendMessage", { chat_id: chatId, text: howToText(), parse_mode: "Markdown", reply_markup: mainMenuKeyboard(admin) });
-        return res.sendStatus(200);
-      }
-
-      if (text === "👨‍💻 Bantuan") {
-        await tg("sendMessage", { chat_id: chatId, text: helpText(), parse_mode: "Markdown", reply_markup: mainMenuKeyboard(admin) });
-        return res.sendStatus(200);
-      }
-
-      if (text === "🏓 Ping" || text === "/ping") {
-        await tg("sendMessage", { chat_id: chatId, text: "✅ Bot aktif." });
-        return res.sendStatus(200);
-      }
-
-      // /cek invoice
       if (text.toLowerCase().startsWith("/cek")) {
         const inv = text.replace(/\/cek/i, "").trim();
-        if (!inv) {
-          await tg("sendMessage", { chat_id: chatId, text: "Format: /cek TX..." });
-        } else {
-          await checkStatus(chatId, inv);
-        }
+        if (!inv) await tg("sendMessage", { chat_id: chatId, text: "Format: /cek TX..." });
+        else await checkStatus(chatId, inv);
         return res.sendStatus(200);
       }
 
-      // admin panel
-      if (admin && (text === "🛠 Panel Admin" || text === "/admin")) {
-        await sendAdminPanel(chatId);
-        return res.sendStatus(200);
-      }
-
-      // admin /broadcast
-      if (text.startsWith("/broadcast")) {
-        if (!admin) {
-          await tg("sendMessage", { chat_id: chatId, text: "❌ Khusus admin." });
-          return res.sendStatus(200);
-        }
-        const msg = text.replace("/broadcast", "").trim();
-        if (!msg) {
-          await tg("sendMessage", { chat_id: chatId, text: "Format:\n/broadcast pesan kamu" });
-          return res.sendStatus(200);
-        }
-        await adminDoBroadcast(chatId, msg);
-        return res.sendStatus(200);
-      }
-
-      // admin /addcategory
-      if (admin && text.startsWith("/addcategory")) {
-        const name = text.replace("/addcategory", "").trim();
-        await adminAddCategory(chatId, name);
-        return res.sendStatus(200);
-      }
-
-      // admin /addproduct
-      if (admin && text.startsWith("/addproduct")) {
-        const raw = text.replace("/addproduct", "").trim();
-        await adminAddProductCmd(chatId, raw);
-        return res.sendStatus(200);
-      }
-
-      // admin /addstock
-      if (admin && text.startsWith("/addstock")) {
-        const raw = text.replace("/addstock", "").trim();
-        await adminChangeStockCmd(chatId, raw, +1);
-        return res.sendStatus(200);
-      }
-
-      // admin /delstock
-      if (admin && text.startsWith("/delstock")) {
-        const raw = text.replace("/delstock", "").trim();
-        await adminChangeStockCmd(chatId, raw, -1);
-        return res.sendStatus(200);
-      }
-
-      // default
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text: "Pilih menu di bawah ya 🙂",
-        reply_markup: mainMenuKeyboard(admin)
-      });
+      await tg("sendMessage", { chat_id: chatId, text: "Pilih menu di bawah ya 🙂", reply_markup: mainMenuKeyboard(admin) });
     }
 
     return res.sendStatus(200);
@@ -962,7 +558,7 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
 });
 
 /**
- * Payment webhook (JANGAN sebut nama gateway)
+ * Payment webhook
  */
 app.post(`/payment/webhook/${PAYMENT_WEBHOOK_SECRET}`, async (req, res) => {
   try {
@@ -970,7 +566,6 @@ app.post(`/payment/webhook/${PAYMENT_WEBHOOK_SECRET}`, async (req, res) => {
     const { amount, order_id } = body;
 
     res.status(200).json({ ok: true });
-
     if (!order_id || !amount) return;
 
     const detail = await transactionDetail(amount, order_id);
