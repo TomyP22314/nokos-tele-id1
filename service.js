@@ -240,14 +240,19 @@ async function sendQRIS(chatId, product, invoice) {
       `🧾 Invoice: ${invoice}\n` +
       `📦 Produk: ${product.name}\n` +
       `💰 Total: Rp ${Number(product.price).toLocaleString("id-ID")}\n\n` +
-      `Silakan scan QRIS di atas.\n` +
-      `Setelah bayar klik /cek ${invoice}`
+      `Silakan scan QRIS di atas.`,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🔄 Cek Status", callback_data: `CEK_${invoice}` }]
+      ]
+    }
   });
 }
 
 /* ================= CEK STATUS & DELIVER ================= */
 
 async function checkAndDeliver(chatId, invoice) {
+
   const tx = await findTransaction(invoice);
   if (!tx) {
     await tg("sendMessage", {
@@ -258,8 +263,17 @@ async function checkAndDeliver(chatId, invoice) {
   }
 
   const row = tx.data;
-  const amount = row[6];
 
+  // Anti double kirim
+  if (row[7] === "SUCCESS") {
+    await tg("sendMessage", {
+      chat_id: chatId,
+      text: "Transaksi sudah berhasil sebelumnya."
+    });
+    return;
+  }
+
+  const amount = row[6];
   const detail = await getPaymentDetail(amount, invoice);
 
   const status =
@@ -289,7 +303,7 @@ async function checkAndDeliver(chatId, invoice) {
       return;
     }
 
-    // kurangi stock jika tidak unlimited
+    // Kurangi stock jika bukan unlimited
     if (product.stock !== "UNLIMITED") {
       const current = Number(product.stock || 0);
       if (current > 0) {
@@ -308,6 +322,7 @@ async function checkAndDeliver(chatId, invoice) {
     });
 
   } else if (status === "EXPIRED" || status === "FAILED") {
+
     await markFailed(tx.rowIndex, row);
 
     await tg("sendMessage", {
@@ -316,13 +331,14 @@ async function checkAndDeliver(chatId, invoice) {
     });
 
   } else {
+
     await tg("sendMessage", {
       chat_id: chatId,
       text: "Status: " + (status || "MENUNGGU PEMBAYARAN")
     });
+
   }
-}
-/* ================= TELEGRAM MAIN HANDLER ================= */
+  /* ================= TELEGRAM MAIN HANDLER ================= */
 
 app.post("/", async (req, res) => {
   try {
@@ -331,9 +347,11 @@ app.post("/", async (req, res) => {
 
     /* ========= CALLBACK BUTTON ========= */
     if (cb) {
+
       const chatId = cb.message.chat.id;
       const data = cb.data;
 
+      // CATEGORY BUTTON
       if (data.startsWith("CAT_")) {
         const cat = data.replace("CAT_", "");
         const products = await getProducts(cat);
@@ -352,6 +370,7 @@ app.post("/", async (req, res) => {
         });
       }
 
+      // BUY BUTTON
       if (data.startsWith("BUY_")) {
         const parts = data.split("_");
         const cat = parts[1];
@@ -369,6 +388,12 @@ app.post("/", async (req, res) => {
         );
 
         await sendQRIS(chatId, product, invoice);
+      }
+
+      // CEK STATUS BUTTON
+      if (data.startsWith("CEK_")) {
+        const invoice = data.replace("CEK_", "");
+        await checkAndDeliver(chatId, invoice);
       }
 
       return res.sendStatus(200);
@@ -389,8 +414,8 @@ app.post("/", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    /* ========= START ========= */
     if (text === "/start") {
+
       await addMember(chatId, username);
 
       const categories = await getCategories();
@@ -405,38 +430,19 @@ app.post("/", async (req, res) => {
       });
     }
 
-    /* ========= CEK ========= */
-    if (text.startsWith("/cek")) {
-      const invoice = text.split(" ")[1];
-      if (!invoice) {
-        await tg("sendMessage", {
-          chat_id: chatId,
-          text: "Format: /cek TXxxxx"
-        });
-      } else {
-        await checkAndDeliver(chatId, invoice);
-      }
-    }
-
     /* ========= ADMIN COMMAND ========= */
     if (String(chatId) === String(ADMIN_CHAT_ID)) {
 
       if (text.startsWith("/ban")) {
         const id = text.split(" ")[1];
         await banUser(id, "Admin ban");
-        await tg("sendMessage", {
-          chat_id: chatId,
-          text: "User diban."
-        });
+        await tg("sendMessage", { chat_id: chatId, text: "User diban." });
       }
 
       if (text.startsWith("/unban")) {
         const id = text.split(" ")[1];
         await unbanUser(id);
-        await tg("sendMessage", {
-          chat_id: chatId,
-          text: "User di-unban."
-        });
+        await tg("sendMessage", { chat_id: chatId, text: "User di-unban." });
       }
 
       if (text === "/dashboard") {
@@ -447,8 +453,8 @@ app.post("/", async (req, res) => {
           chat_id: chatId,
           text:
             `📊 Dashboard\n\n` +
-            `✅ Berhasil: ${success.length - 1}\n` +
-            `❌ Gagal: ${fail.length - 1}`
+            `✅ Berhasil: ${Math.max(success.length - 1, 0)}\n` +
+            `❌ Gagal: ${Math.max(fail.length - 1, 0)}`
         });
       }
     }
