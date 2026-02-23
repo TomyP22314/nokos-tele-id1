@@ -39,11 +39,11 @@ const PAKASIR_SLUG = process.env.PAKASIR_SLUG;
 const PAKASIR_API_KEY = process.env.PAKASIR_API_KEY;
 const PAKASIR_WEBHOOK_SECRET = process.env.PAKASIR_WEBHOOK_SECRET;
 
-// Optional UI/UX env
-const BANNER_URL = process.env.BANNER_URL || ""; // banner /start
-const WELCOME_ANIM_FILE_ID = process.env.WELCOME_ANIM_FILE_ID || ""; // telegram file_id
+// Optional UI env
+const BANNER_URL = process.env.BANNER_URL || "";
+const WELCOME_ANIM_FILE_ID = process.env.WELCOME_ANIM_FILE_ID || "";
 const REQUIRE_MEMBERSHIP = String(process.env.REQUIRE_MEMBERSHIP || "0") === "1";
-const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || "").replace("@", ""); // opsional untuk tombol bantuan
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || "").replace("@", ""); // opsional
 
 // Tab names (sesuai sheet kamu)
 const TAB_PRODUCTS = "APK NONTON";
@@ -71,7 +71,9 @@ function getGoogleAuth() {
   try {
     sa = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
   } catch {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON bukan JSON valid. Paste isi file service account utuh.");
+    throw new Error(
+      "GOOGLE_SERVICE_ACCOUNT_JSON bukan JSON valid. Paste isi file service account utuh."
+    );
   }
   return new google.auth.JWT({
     email: sa.client_email,
@@ -129,18 +131,58 @@ function rupiah(n) {
   return "Rp " + Number(n || 0).toLocaleString("id-ID");
 }
 
-function makeInvoice(prefix = "INV") {
-  const rand = crypto.randomBytes(3).toString("hex").toUpperCase();
-  const ts = Date.now();
-  return `${prefix}-${ts}-${rand}`;
-}
-
 function isAdmin(chatId) {
   return String(chatId) === String(ADMIN_CHAT_ID);
 }
 
 /**
- * Menu utama (store style)
+ * Invoice format: TXYYYYMMDDHHMMSS (mirip contoh di foto)
+ */
+function makeInvoice(prefix = "TX") {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const y = d.getFullYear();
+  const mo = pad(d.getMonth() + 1);
+  const da = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+  return `${prefix}${y}${mo}${da}${hh}${mm}${ss}`;
+}
+
+function formatIDDateTime(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const day = pad(d.getDate());
+  const month = pad(d.getMonth() + 1);
+  const year = String(d.getFullYear()).slice(-2);
+  const hour = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  return `${day}/${month}/${year} ${hour}.${min}`;
+}
+
+function formatIDDateTimeLong(d = new Date()) {
+  const months = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember"
+  ];
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} ${pad(d.getHours())}:${pad(
+    d.getMinutes()
+  )}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * Menu utama (premium store)
  */
 function mainMenuKeyboard(admin = false) {
   const base = [
@@ -343,14 +385,14 @@ async function copyTxTo(tabName, txRow) {
 
 /**
  * =========================
- * UI texts
+ * UI texts (lebih “store”)
  * =========================
  */
 function welcomeText() {
   return (
     `Selamat datang di *GOMSTORE* 🛍️\n\n` +
-    `✅ Produk siap dikirim otomatis\n` +
-    `💳 Pembayaran via *QR*\n\n` +
+    `✨ Auto kirim link setelah pembayaran sukses\n` +
+    `💳 Pembayaran via QRIS / QR\n\n` +
     `Pilih menu di bawah ya 👇`
   );
 }
@@ -361,30 +403,29 @@ function howToText() {
     `1) Klik *🛍️ Katalog*\n` +
     `2) Pilih produk → lihat detail\n` +
     `3) Klik *Beli* → konfirmasi\n` +
-    `4) Bayar via QR\n` +
-    `5) Setelah sukses, link dikirim otomatis\n\n` +
-    `Cek pesanan: klik *🧾 Cek Pesanan* atau ketik:\n` +
-    `\`/cek INV-...\``
+    `4) Scan QR / bayar\n` +
+    `5) Link otomatis dikirim ✅\n\n` +
+    `Kamu bisa cek status pakai:\n` +
+    `\`/cek TX...\``
   );
 }
 
 function helpText() {
-  const adminLine = ADMIN_USERNAME
-    ? `👨‍💻 Admin: @${ADMIN_USERNAME}\n`
-    : `👨‍💻 Admin Chat ID: ${ADMIN_CHAT_ID}\n`;
-
+  const adminLine = ADMIN_USERNAME ? `Admin: @${ADMIN_USERNAME}\n` : `Admin Chat ID: ${ADMIN_CHAT_ID}\n`;
   return (
     `👨‍💻 *Bantuan*\n\n` +
     adminLine +
-    `Kalau pembayaran sukses tapi link belum masuk, kirim invoice ke admin ya.\n\n` +
-    `Format cek status:\n` +
-    `\`/cek INV-...\``
+    `Kalau pembayaran sukses tapi link belum masuk:\n` +
+    `1) Klik *Cek Status*\n` +
+    `2) Jika masih pending, tunggu 1-2 menit\n` +
+    `3) Jika tetap kendala, kirim ID Transaksi ke admin\n\n` +
+    `Cek status: \`/cek TX...\``
   );
 }
 
 /**
  * =========================
- * UI flows
+ * UI flows: Katalog → Detail → Konfirmasi
  * =========================
  */
 async function sendWelcome(chatId, admin) {
@@ -422,13 +463,12 @@ async function sendWelcome(chatId, admin) {
 
 async function sendProducts(chatId) {
   const products = await getProducts();
-
   if (!products.length) {
     await tg("sendMessage", { chat_id: chatId, text: "Belum ada produk di sheet." });
     return;
   }
 
-  let text = `🛍️ *Katalog Produk*\nPilih produk untuk lihat detail 👇\n\n`;
+  let text = `🛍️ *Katalog Produk*\nPilih untuk lihat detail 👇\n\n`;
   const buttons = [];
 
   for (const p of products) {
@@ -461,7 +501,7 @@ async function sendProductDetail(chatId, productId) {
     `💰 Harga: *${rupiah(p.price)}*\n` +
     `📌 Stok: *${stockText(p.stock)}*\n\n` +
     `📝 Deskripsi:\n${desc}\n\n` +
-    `Klik *Beli* untuk lanjut pembayaran.`;
+    `Klik *Beli Sekarang* untuk lanjut pembayaran.`;
 
   await tg("sendMessage", {
     chat_id: chatId,
@@ -516,9 +556,9 @@ async function sendCheckOrderHelp(chatId) {
   const text =
     `🧾 *Cek Pesanan*\n\n` +
     `Ketik:\n` +
-    `\`/cek INV-...\`\n\n` +
+    `\`/cek TX...\`\n\n` +
     `Contoh:\n` +
-    `\`/cek INV-1712345678901-ABC123\``;
+    `\`/cek TX20260223110114\``;
 
   await tg("sendMessage", {
     chat_id: chatId,
@@ -530,7 +570,7 @@ async function sendCheckOrderHelp(chatId) {
 
 /**
  * =========================
- * Checkout
+ * Checkout (tampilan mirip foto kamu)
  * =========================
  */
 async function startCheckout(chatId, username, productId) {
@@ -560,10 +600,13 @@ async function startCheckout(chatId, username, productId) {
     return;
   }
 
-  const invoice = makeInvoice("INV");
+  const invoice = makeInvoice("TX");
   await createTx({ product, chatId, username, invoice });
 
-  // detail (ambil QR image jika ada)
+  const createdAt = new Date();
+  const expiredAt = new Date(Date.now() + 60 * 60 * 1000); // 60 menit (ubah kalau mau)
+
+  // ambil detail untuk dapat QR url bila tersedia
   const detail = await transactionDetail(product.price, invoice);
   const t = detail?.transaction || {};
   const maybeQrUrl =
@@ -572,12 +615,20 @@ async function startCheckout(chatId, username, productId) {
   const pay = payUrl(product.price, invoice);
 
   const caption =
-    `🧾 *Invoice dibuat*\n\n` +
-    `• Produk: *${product.name}*\n` +
-    `• Total: *${rupiah(product.price)}*\n` +
-    `• Invoice: \`${invoice}\`\n\n` +
-    `Silakan bayar via QR.\n` +
-    `Setelah sukses, link dikirim otomatis ✅`;
+    `Sedang memuat pembayaranmu, harap tunggu sebentar...\n\n` +
+    `🧾 *Invoice Berhasil Dibuat*\n\n` +
+    `salin\n` +
+    `\`${invoice}\`\n\n` +
+    `*Informasi Item:*\n` +
+    `— Item Price Total: *${rupiah(product.price)}*\n` +
+    `— Jumlah Item: *1x*\n` +
+    `— List Yang Dibeli:\n` +
+    `1. *${product.name}* x1 = *${rupiah(product.price)}*\n\n` +
+    `*Informasi Pembayaran:*\n` +
+    `— ID Transaksi: *${invoice}*\n` +
+    `— Tanggal Dibuat: *${formatIDDateTime(createdAt)}*\n` +
+    `— Total Dibayar: *${rupiah(product.price)}*\n` +
+    `— Expired In: *${formatIDDateTimeLong(expiredAt)}*`;
 
   const helpBtn = ADMIN_USERNAME
     ? [{ text: "👨‍💻 Bantuan", url: `https://t.me/${ADMIN_USERNAME}` }]
@@ -585,9 +636,10 @@ async function startCheckout(chatId, username, productId) {
 
   const markup = {
     inline_keyboard: [
-      [{ text: "💳 Buka Pembayaran (Web)", url: pay }],
+      [{ text: "Salin", callback_data: `COPY:${invoice}` }],
       [{ text: "🔄 Cek Status", callback_data: `CHECK:${invoice}` }],
-      [{ text: "❌ Batalkan", callback_data: `CANCEL:${invoice}` }],
+      [{ text: "Batalkan Pembelian", callback_data: `CANCEL:${invoice}` }],
+      [{ text: "💳 Buka Pembayaran (Web)", url: pay }],
       helpBtn
     ]
   };
@@ -629,13 +681,14 @@ async function checkStatus(chatId, invoice) {
   }
 
   const detail = await transactionDetail(tx.price, invoice);
-  const status = (detail?.transaction?.status || detail?.status || "unknown").toString();
-  const lower = status.toLowerCase();
+  const statusRaw = (detail?.transaction?.status || detail?.status || "unknown").toString();
+  const lower = statusRaw.toLowerCase();
 
-  let pretty = status;
+  // Pretty mapping
+  let pretty = statusRaw.toUpperCase();
   if (lower === "completed") pretty = "COMPLETED ✅";
-  if (lower === "pending") pretty = "PENDING ⏳";
-  if (lower === "failed") pretty = "FAILED ❌";
+  else if (lower === "pending") pretty = "PENDING ⏳";
+  else if (lower === "failed") pretty = "FAILED ❌";
 
   const msg =
     `🧾 *Status Pesanan*\n\n` +
@@ -685,7 +738,7 @@ async function cancelInvoice(chatId, invoice) {
 
 /**
  * =========================
- * Delivery after PAID
+ * Delivery after PAID (completed)
  * =========================
  */
 async function deliverPaid(invoice, amount) {
@@ -698,9 +751,9 @@ async function deliverPaid(invoice, amount) {
     return;
   }
 
-  if (String(tx.status).toUpperCase() === "SUCCESS") return; // sudah diproses
+  if (String(tx.status).toUpperCase() === "SUCCESS") return;
 
-  // ambil produk terbaru
+  // ambil produk terbaru dari sheet
   const products = await getProducts();
   const product = products.find((p) => p.id === tx.product_id);
 
@@ -711,7 +764,7 @@ async function deliverPaid(invoice, amount) {
 
     await tg("sendMessage", {
       chat_id: tx.chat_id,
-      text: `✅ Pembayaran sukses.\nNamun produk tidak ditemukan di sheet. Hubungi admin.\nInvoice: ${invoice}`
+      text: `✅ Pembayaran sukses.\nNamun produk tidak ditemukan di sheet. Hubungi admin.\nID: ${invoice}`
     });
 
     await tg("sendMessage", {
@@ -736,7 +789,7 @@ async function deliverPaid(invoice, amount) {
     if (current <= 0) {
       await tg("sendMessage", {
         chat_id: tx.chat_id,
-        text: `✅ Pembayaran sukses.\nNamun stok ${product.name} habis saat diproses. Hubungi admin.\nInvoice: ${invoice}`
+        text: `✅ Pembayaran sukses.\nNamun stok ${product.name} habis saat diproses. Hubungi admin.\nID: ${invoice}`
       });
       await tg("sendMessage", {
         chat_id: ADMIN_CHAT_ID,
@@ -756,7 +809,7 @@ async function deliverPaid(invoice, amount) {
   const msg =
     `✅ *Transaksi berhasil!*\n\n` +
     `📦 Produk: *${product.name}*\n` +
-    `🧾 Invoice: \`${invoice}\`\n\n` +
+    `🧾 ID Transaksi: \`${invoice}\`\n\n` +
     `🔗 *Link Download:*\n${product.link || "(link kosong di sheet)"}\n\n` +
     `Terima kasih 🙏`;
 
@@ -776,7 +829,7 @@ async function deliverPaid(invoice, amount) {
 
 /**
  * =========================
- * Admin Panel (tetap ada)
+ * Admin Panel
  * =========================
  */
 async function sendAdminPanel(chatId) {
@@ -889,7 +942,7 @@ async function adminDailyChart(chatId) {
   }
 
   const rows = values.slice(1);
-  const map = new Map(); // yyyy-mm-dd -> count
+  const map = new Map();
   for (const r of rows) {
     const dt = String(r[0] || "");
     const day = dt.slice(0, 10) || "unknown";
@@ -917,6 +970,7 @@ async function adminDoBroadcast(chatId, message) {
   const keys = await getAllMembersKeys();
   let sent = 0;
 
+  // hanya chat_id angka bisa dibroadcast
   for (const k of keys) {
     if (!/^\d+$/.test(k)) continue;
     try {
@@ -987,6 +1041,13 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
       } else if (data.startsWith("BUY:")) {
         const productId = data.split(":")[1];
         await startCheckout(chatId, username, productId);
+      } else if (data.startsWith("COPY:")) {
+        const code = data.split(":")[1] || "";
+        await tg("sendMessage", {
+          chat_id: chatId,
+          text: `Berikut ID Transaksi kamu:\n\`${code}\``,
+          parse_mode: "Markdown"
+        });
       } else if (data.startsWith("CHECK:")) {
         const invoice = data.split(":")[1];
         await checkStatus(chatId, invoice);
@@ -1035,14 +1096,13 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
       const username = update.message.from?.username || "";
       const admin = isAdmin(chatId);
 
-      // register member saat /start
       if (text === "/start") {
         await ensureMember(chatId, username);
         await sendWelcome(chatId, admin);
         return res.sendStatus(200);
       }
 
-      // quick command cek invoice
+      // cek invoice
       if (text.toLowerCase().startsWith("/cek")) {
         const inv = text.replace(/\/cek/i, "").trim();
         if (!inv) {
@@ -1053,7 +1113,7 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
         return res.sendStatus(200);
       }
 
-      // menu handlers
+      // menu
       if (text === "🛍️ Katalog" || text === "/produk") {
         await sendProducts(chatId);
       } else if (text === "🧾 Cek Pesanan") {
@@ -1124,7 +1184,7 @@ app.post(`/telegram/webhook/${WEBHOOK_SECRET}`, async (req, res) => {
 
 /**
  * Pakasir webhook
- * URL di dashboard:
+ * URL:
  * https://<domain>/pakasir/webhook/<PAKASIR_WEBHOOK_SECRET>
  */
 app.post(`/pakasir/webhook/${PAKASIR_WEBHOOK_SECRET}`, async (req, res) => {
