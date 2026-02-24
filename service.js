@@ -137,6 +137,21 @@ function rupiah(n) {
   return "Rp " + num.toLocaleString("id-ID");
 }
 
+function getRandomTestimoni() {
+  const list = [
+    "⭐⭐⭐⭐⭐ Cepet banget prosesnya, baru bayar langsung dikirim!",
+    "⭐⭐⭐⭐⭐ Trusted parah, udah order 3x aman semua 🔥",
+    "⭐⭐⭐⭐⭐ Admin fast respon & ramah banget!",
+    "⭐⭐⭐⭐⭐ Harga murah tapi kualitas premium 💎",
+    "⭐⭐⭐⭐⭐ Auto kirim beneran, gak pake lama!",
+    "⭐⭐⭐⭐⭐ Recommended seller, gak tipu-tipu!",
+    "⭐⭐⭐⭐⭐ Udah langganan disini, aman terus!",
+    "⭐⭐⭐⭐⭐ Proses cuma hitungan detik ⚡"
+  ];
+
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 function displayUser(username, chatId) {
   const u = username ? ("@" + username) : "-";
   return u + " | " + String(chatId);
@@ -641,11 +656,34 @@ async function handleUpdate(req, res) {
       return res.sendStatus(200);
     }
 
-    if (text === "/start") {
-      await addMember(chatId, username);
-      await tgSendMessage(chatId, "Selamat datang 👋\nGunakan menu di bawah.", { reply_markup: mainMenuKeyboard(admin) });
-      return res.sendStatus(200);
-    }
+  if (text === "/start") {
+  await addMember(chatId, username);
+
+  const memberRows = await read(TAB_MEMBER + "!A:C");
+  const successRows = await read(TAB_TX_SUCCESS + "!A:G");
+
+  const totalMember = memberRows.length;
+  const totalSuccess = successRows.length;
+
+  const testimoni = getRandomTestimoni();
+
+  const welcome =
+    "🚨 GOMS APK MOD RESMI 🚨\n\n" +
+    "🔥 APK MOD & PREMIUM TERLENGKAP!\n" +
+    "⚡ Auto kirim • Cepat • Aman\n\n" +
+    "📊 Statistik Kami:\n" +
+    "👥 Member: " + totalMember + "\n" +
+    "✅ Transaksi Sukses: " + totalSuccess + "\n\n" +
+    "💬 Testimoni Pembeli:\n" +
+    testimoni + "\n\n" +
+    "👇 PILIH KATEGORI & GAS SEKARANG 👇";
+
+  await tgSendMessage(chatId, welcome, {
+    reply_markup: mainMenuKeyboard(admin),
+  });
+
+  return res.sendStatus(200);
+}
 
     if (text === "📍 Ping") {
       await tgSendMessage(chatId, "✅ Pong!", { reply_markup: mainMenuKeyboard(admin) });
