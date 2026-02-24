@@ -76,6 +76,17 @@ async function tgSendPhoto(chatId, photo, caption, extra = {}) {
   }
 }
 
+async function tgDeleteMessage(chatId, messageId) {
+  try {
+    return await tg("deleteMessage", {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  } catch (e) {
+    console.log("TG deleteMessage error:", e?.message || e);
+  }
+}
+
 async function tgAnswerCallback(cbId, text, showAlert = false) {
   try {
     return await tg("answerCallbackQuery", {
@@ -372,15 +383,16 @@ async function createPakasirQRIS(amount, invoice) {
 async function createTransaction(product, chatId, username) {
   const invoice = "TX" + Date.now() + crypto.randomBytes(2).toString("hex");
 
-  await append(`${TAB_TX}!A:G`, [
-    nowISO(),              // A TANGGAL
-    product.id,            // B ID PRODUK
-    product.name,          // C NAMA
-    username ? `@${username}` : String(chatId), // D USER/ID
-    invoice,               // E INVOICE
-    product.price,         // F HARGA
-    "PENDING",             // G STATUS
-  ]);
+await append(`${TAB_TX}!A:H`, [
+  nowISO(),
+  product.id,
+  product.name,
+  username ? `@${username}` : String(chatId),
+  invoice,
+  product.price,
+  "PENDING",
+  "" // H = QR_MSG_ID (untuk simpan message_id QRIS)
+]);
 
   return invoice;
 }
@@ -518,10 +530,17 @@ async function checkAndDeliver(chatId, invoice) {
         await updateCell(`${product.tab}!E${product.rowIndex}`, String(current - 1));
       }
     }
+// 🔥 HAPUS PESAN QRIS SEBELUM KIRIM SUCCESS
+const qrMsgId = row[7]; // kolom H (QR_MSG_ID)
+    console.log("QR MSG ID:", qrMsgId);
+if (qrMsgId) {
+  await tgDeleteMessage(chatId, Number(qrMsgId));
+  await updateCell(`${TAB_TX}!H${tx.rowIndex}`, ""); // kosongkan kolom
+}
 
-    await markSuccess(tx.rowIndex, row);
+await markSuccess(tx.rowIndex, row);
 
-    await tgSendMessage(
+await tgSendMessage(
       chatId,
       `✅ <b>Pembayaran Berhasil!</b>\n\n` +
         `📦 <b>${product.name}</b>\n\n` +
