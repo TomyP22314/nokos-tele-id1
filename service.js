@@ -489,11 +489,19 @@ console.log("QR STRING:", qrString);
       "Silakan scan QRIS di atas.\n" +
       "Setelah bayar, klik tombol <b>🔄 Cek Status</b>.",
     {
-      reply_markup: {
-        inline_keyboard: [[{ text: "🔄 Cek Status", callback_data: `CEK_${invoice}` }]],
-      },
-    }
-  );
+      {
+reply_markup: {
+  inline_keyboard: [
+    [
+      { text: "🔄 Cek Status", callback_data: `CEK_${invoice}` },
+      { text: "❌ Batalkan", callback_data: `CANCEL_${invoice}` },
+    ],
+    [
+      { text: "🏠 Home", callback_data: "HOME" },
+    ],
+  ],
+},
+}
   const qrMsgId = sent?.result?.message_id || sent?.message_id;
 console.log("QR MSG ID SAVED:", qrMsgId);
 
@@ -691,6 +699,36 @@ async function handleUpdate(update) {
       return;
     }
 
+    // CANCEL TRANSAKSI
+if (data.startsWith("CANCEL_")) {
+  const invoice = data.replace("CANCEL_", "");
+
+  await tgAnswerCallback(cb.id, "Membatalkan transaksi...", false);
+
+  const tx = await findTransaction(invoice);
+  if (!tx) {
+    await tgAnswerCallback(cb.id, "Transaksi tidak ditemukan.", true);
+    return;
+  }
+
+  await updateCell(`${TAB_TX}!G${tx.rowIndex}`, "CANCELLED");
+
+  await tgEditMessage(
+    chatId,
+    cb.message.message_id,
+    "❌ <b>Transaksi dibatalkan.</b>\n\nSilakan kembali ke menu.",
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🏠 Home", callback_data: "HOME" }]
+        ]
+      }
+    }
+  );
+
+  return;
+}
+
     // pagination
 if (data.startsWith("PROD_PAGE_")) {
   const parts = data.split("_");
@@ -810,8 +848,8 @@ const welcome =
   `📊 <b>STATISTIK TOKO</b>\n` +
   `👥 Member: <b>${totalMember}</b>\n` +
   `✅ Transaksi Sukses: <b>${totalSuccess}</b>\n\n` +
-  `💬 <b>Testimoni Pembeli</b>\n` +
-  `${testimoni}\n\n` +
+  `'💬 <b>Testimoni Pembeli</b>\n' +
+'<pre>' + testimoni + '</pre>\n\n' +
 "📌 <b>PILIH KATEGORI DI MENU</b> 👇\n" +
 "━━━━━━━━━━━━━━━━━━━━\n" +
 "📣 <b>IKLAN SPONSOR</b>\n" +
