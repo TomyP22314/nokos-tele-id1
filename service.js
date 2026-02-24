@@ -57,9 +57,17 @@ async function tgSendMessage(chatId, text, extra) {
   return tg("sendMessage", payload);
 }
 
-async function tgSendPhoto(chatId, photo, caption, extra) {
-  const payload = Object.assign({ chat_id: chatId, photo: photo, caption: caption }, extra || {});
-  return tg("sendPhoto", payload);
+async function tgSendMessage(chatId, text, extra) {
+  const payload = Object.assign(
+    {
+      chat_id: chatId,
+      text: text,
+      parse_mode: "Markdown"
+    },
+    extra || {}
+  );
+
+  return tg("sendMessage", payload);
 }
 
 async function tgAnswerCallback(cbId, text, showAlert) {
@@ -148,7 +156,6 @@ function getRandomTestimoni() {
     "⭐⭐⭐⭐⭐ Udah langganan disini, aman terus!",
     "⭐⭐⭐⭐⭐ Proses cuma hitungan detik ⚡"
   ];
-
   return list[Math.floor(Math.random() * list.length)];
 }
 
@@ -656,45 +663,42 @@ async function handleUpdate(req, res) {
       return res.sendStatus(200);
     }
 
-  if (text === "/start") {
+if (text === "/start") {
   await addMember(chatId, username);
 
+  // hitung statistik
   const memberRows = await read(TAB_MEMBER + "!A:C");
   const successRows = await read(TAB_TX_SUCCESS + "!A:G");
 
-  const totalMember = memberRows.length;
-  const totalSuccess = successRows.length;
+  // kalau sheet kamu ada header, kamu bisa pakai -1 (optional)
+  const totalMember = Math.max(memberRows.length - 1, 0);
+  const totalSuccess = Math.max(successRows.length - 1, 0);
 
   const testimoni = getRandomTestimoni();
 
   const welcome =
-    "🚨 GOMS APK MOD🚨\n\n" +
-    "📲 APK KHUSUS ANDROID\n"
-    "🔥 APK MOD & PREMIUM TERLENGKAP\n\n" +
-    "⚡ Auto kirim • Cepat • Aman\n" +
-    "📊 Statistik Kami:\n\n" +
-    "👥 Member: " + totalMember + "\n" +
-    "✅ Transaksi Sukses: " + totalSuccess + "\n\n" +
-    "💬 Testimoni Pembeli:\n" +
+    "✨ *GOMS APK MOD* ✨\n" +
+    "━━━━━━━━━━━━━━━━━━\n" +
+    "📱 APK Khusus Android\n" +
+    "⚡ Auto Kirim • Cepat • Aman\n" +
+    "🛡️ *Trusted *\n\n" +
+    "📊 *STATISTIK TOKO*\n" +
+    "👥 Member: *" + totalMember + "*\n" +
+    "✅ Transaksi Sukses: *" + totalSuccess + "*\n\n" +
+    "💬 *TESTIMONI RANDOM*\n" +
     testimoni + "\n\n" +
-    "👇 PILIH KATEGORI & GAS SEKARANG 👇";
+    "🎁 *INFO & PROMO*\n" +
+    "📢 Nokos Telegram: https://t.me/gomstele24jam_bot\n\n" +
+    "👇 *PILIH KATEGORI DI MENU & GAS SEKARANG* 👇";
 
-  await tgSendMessage(chatId, welcome, {
-    reply_markup: mainMenuKeyboard(admin),
+  const isAdmin = String(chatId) === String(ADMIN_CHAT_ID);
+
+  await tgSafeSendMessage(chatId, welcome, {
+    reply_markup: mainMenuKeyboard(isAdmin)
   });
 
   return res.sendStatus(200);
 }
-
-    if (text === "📍 Ping") {
-      await tgSendMessage(chatId, "✅ Pong!", { reply_markup: mainMenuKeyboard(admin) });
-      return res.sendStatus(200);
-    }
-
-    if (text === "🗂️ Kategori") {
-      await sendCategoryList(chatId);
-      return res.sendStatus(200);
-    }
 
     if (text === "🧾 Cek Pesanan") {
       await listMyPending(chatId);
