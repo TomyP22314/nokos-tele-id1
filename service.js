@@ -151,8 +151,8 @@ function nowISO() {
 }
 
 function displayUser(username, chatId) {
-  const u = username ? `@${username}` : "-";
-  return `${u} | ${chatId}`;
+  const u = username ? "@" + username : "-";
+  return u + " | " + chatId;
 }
 
 function parseChatIdFromDisplay(display) {
