@@ -138,9 +138,10 @@ async function update(range, value) {
 }
 
 async function clearRow(tab, rowIndex, colEndLetter) {
+  const r = tab + "!A" + rowIndex + ":" + colEndLetter + rowIndex;
   await sheets.spreadsheets.values.clear({
     spreadsheetId: SHEET_ID,
-    range: qSheet(`${tab}!A${rowIndex}:${colEndLetter}${rowIndex}`),
+    range: qSheet(r),
   });
 }
 
