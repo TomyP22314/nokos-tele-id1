@@ -774,14 +774,12 @@ randomAds;
 
   if (text === "🆘 Bantuan") {
     await tgSendMessage(
-      chatId,
-      `🆘 <b>BANTUAN</b>\n\n` +
-        `Kalau QRIS belum muncul, tunggu 10-30 detik lalu coba lagi.\n` +
-        `Kalau sudah bayar tapi belum terkirim, klik <b>🔄 Cek Status</b>.\n\n` +
-        `Admin: <code>${ADMIN_CHAT_ID}</code>`
-    );
-    return;
-  }
+  chatId,
+  "🆘 <b>BANTUAN</b>\n\n" +
+  "Kalau QRIS belum muncul, tunggu 10-30 detik lalu coba lagi.\n" +
+  "Kalau sudah bayar tapi belum terkirim, klik <b>🔄 Cek Status</b>.\n\n" +
+  'Admin: <a href="https://t.me/hellogoms">@hellogoms</a>'
+);
 
   if (text === "🧾 Cek Pesanan") {
     await tgSendMessage(
