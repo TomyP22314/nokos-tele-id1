@@ -53,11 +53,6 @@ async function tg(method, body) {
 }
 
 async function tgSendMessage(chatId, text, extra) {
-  const payload = Object.assign({ chat_id: chatId, text: text }, extra || {});
-  return tg("sendMessage", payload);
-}
-
-async function tgSendMessage(chatId, text, extra) {
   const payload = Object.assign(
     {
       chat_id: chatId,
