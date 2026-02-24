@@ -462,7 +462,7 @@ console.log("QR STRING:", qrString);
     "https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=" +
     encodeURIComponent(qrString);
 
-  await tgSendPhoto(
+  const sent = await tgSendPhoto(
     chatId,
     qrImageUrl,
     "🧾 <b>Invoice</b>: <code>" + invoice + "</code>\n" +
@@ -476,6 +476,13 @@ console.log("QR STRING:", qrString);
       },
     }
   );
+  const qrMsgId = sent?.result?.message_id || sent?.message_id;
+console.log("QR MSG ID SAVED:", qrMsgId);
+
+const tx = await findTransaction(invoice);
+if (tx && qrMsgId) {
+  await updateCell(`${TAB_TX}!H${tx.rowIndex}`, String(qrMsgId));
+}
 }
 
 /* ================= CEK STATUS & DELIVER ================= */
