@@ -398,7 +398,7 @@ await append(`${TAB_TX}!A:H`, [
 }
 
 async function findTransaction(invoice) {
-  const rows = await read(`${TAB_TX}!A:G`);
+const rows = await read(`${TAB_TX}!A:H`);
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][4]) === String(invoice)) {
       return { rowIndex: i + 1, data: rows[i] };
