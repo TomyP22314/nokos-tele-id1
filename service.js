@@ -165,13 +165,19 @@ function getRandomTestimoni() {
   ];
   return list[Math.floor(Math.random() * list.length)];
 }
-function marketingSuccessFallback() {
-  // Bikin angka naik berdasarkan hari
-  const base = 150; // angka minimal
+function marketingMemberFallback() {
+  const base = 120; // angka minimal member palsu biar “jualan keras”
   const days = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
-  const growth = days % 300; // biar keliatan naik
-  const randomBoost = Math.floor(Math.random() * 20); // variasi kecil
+  const growth = days % 200;
+  const randomBoost = Math.floor(Math.random() * 30);
+  return base + growth + randomBoost;
+}
 
+function marketingSuccessFallback() {
+  const base = 150; // angka minimal transaksi sukses palsu
+  const days = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+  const growth = days % 300;
+  const randomBoost = Math.floor(Math.random() * 20);
   return base + growth + randomBoost;
 }
 
