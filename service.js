@@ -102,14 +102,13 @@ const auth = new google.auth.JWT(
 
 const sheets = google.sheets({ version: "v4", auth });
 
-// Quote helper: turn "TAB!A:B" into "'TAB'!A:B" to support spaces safely
 function qSheet(range) {
   if (range.startsWith("'")) return range;
   const idx = range.indexOf("!");
   if (idx === -1) return range;
   const tab = range.slice(0, idx);
   const rest = range.slice(idx);
-  return `'${tab}'${rest}`;
+  return "'" + tab + "'" + rest;
 }
 
 async function read(range) {
