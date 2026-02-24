@@ -336,6 +336,38 @@ async function getPaymentDetail(amount, invoice) {
   return data;
     }
 
+async function createPakasirQRIS(amount, invoice) {
+  const url = "https://app.pakasir.com/api/transactioncreate/qris";
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project: PAYMENT_PROJECT_SLUG,
+      order_id: invoice,
+      amount: Number(amount),
+      api_key: PAYMENT_API_KEY,
+    }),
+  });
+
+  const text = await res.text();
+  console.log("PAKASIR CREATE STATUS:", res.status);
+  console.log("PAKASIR CREATE BODY:", text);
+
+  if (!res.ok) {
+    throw new Error("PAKASIR CREATE ERROR " + res.status + ": " + text);
+  }
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    throw new Error("PAKASIR CREATE NOT JSON: " + text);
+  }
+
+  return data;
+}
+
 /* ================= TRANSAKSI ================= */
 async function createTransaction(product, chatId, username) {
   const invoice = "TX" + Date.now() + crypto.randomBytes(2).toString("hex");
@@ -385,27 +417,47 @@ async function countSuccessTx() {
 
 /* ================= QRIS SEND ================= */
 async function sendQRIS(chatId, product, invoice) {
-  const pay = await getPaymentDetail(product.price, invoice);
+  let pay;
+  try {
+    // WAJIB: buat transaksi QRIS dulu
+    pay = await createPakasirQRIS(product.price, invoice);
+  } catch (e) {
+    console.log("PAKASIR CREATE ERROR:", e?.message || e);
+    await tgSendMessage(chatId, "⚠️ QRIS gagal dibuat. Coba lagi sebentar ya.");
+    return;
+  }
 
-  const qr =
-    pay?.transaction?.qr_url ||
-    pay?.transaction?.qris_url ||
-    pay?.qr_url ||
-    null;
+  // Pakasir ngasih QR string di payment_number
+const qrString =
+  pay?.payment?.payment_number ||
+  pay?.payment?.payment_string ||
+  pay?.payment?.qr_string ||
+  pay?.transaction?.payment_number ||
+  pay?.transaction?.qris_string ||
+  pay?.transaction?.qr_string ||
+  null;
 
-  if (!qr) {
+  console.log("PAKASIR CREATE PAY:", JSON.stringify(pay));
+console.log("QR STRING:", qrString);
+
+  if (!qrString) {
     await tgSendMessage(chatId, "⚠️ QRIS belum tersedia. Coba lagi sebentar ya.");
     return;
   }
 
+  // Ubah QR string jadi gambar biar bisa dikirim Telegram
+  const qrImageUrl =
+    "https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=" +
+    encodeURIComponent(qrString);
+
   await tgSendPhoto(
     chatId,
-    qr,
-    `🧾 <b>Invoice</b>: <code>${invoice}</code>\n` +
-      `📦 <b>Produk</b>: ${product.name}\n` +
-      `💰 <b>Total</b>: <b>${rupiah(product.price)}</b>\n\n` +
-      `Silakan scan QRIS di atas.\n` +
-      `Setelah bayar, klik tombol <b>🔄 Cek Status</b>`,
+    qrImageUrl,
+    "🧾 <b>Invoice</b>: <code>" + invoice + "</code>\n" +
+      "📦 <b>Produk</b>: " + product.name + "\n" +
+      "💰 <b>Total</b>: <b>" + rupiah(product.price) + "</b>\n\n" +
+      "Silakan scan QRIS di atas.\n" +
+      "Setelah bayar, klik tombol <b>🔄 Cek Status</b>.",
     {
       reply_markup: {
         inline_keyboard: [[{ text: "🔄 Cek Status", callback_data: `CEK_${invoice}` }]],
