@@ -97,6 +97,24 @@ async function tgAnswerCallback(cbId, text, showAlert = false) {
   } catch (e) {}
 }
 
+async function tgEditMessage(chatId, messageId, text, extra = {}) {
+  try {
+    const payload = Object.assign(
+      {
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      },
+      extra || {}
+    );
+    return await tg("editMessageText", payload);
+  } catch (e) {
+    console.log("TG editMessageText error:", e?.message || e);
+  }
+}
+
 /* ================= GOOGLE SHEETS ================= */
 const sa = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON);
 
@@ -581,7 +599,7 @@ async function showCategories(chatId) {
   });
 }
 
-async function showProducts(chatId, cat) {
+async function showProducts(chatId, cat, messageId) {
   const products = await getProducts(cat);
   if (!products.length) {
     await tgSendMessage(chatId, `⚠️ Produk di <b>${cat}</b> masih kosong.`);
@@ -595,9 +613,9 @@ async function showProducts(chatId, cat) {
     },
   ]);
 
-  await tgSendMessage(chatId, `📦 <b>Produk ${cat}</b>\nPilih salah satu:`, {
-    reply_markup: { inline_keyboard: buttons },
-  });
+await tgEditMessage(chatId, messageId, "📦 <b>Produk " + cat + "</b>\nPilih salah satu:", {
+  reply_markup: { inline_keyboard: buttons },
+});
 }
 
 /* ================= UPDATE HANDLER ================= */
@@ -630,7 +648,7 @@ async function handleUpdate(update) {
     if (data.startsWith("CAT_")) {
       const cat = data.replace("CAT_", "");
       await tgAnswerCallback(cb.id, "Membuka produk...", false);
-      await showProducts(chatId, cat);
+      await showProducts(chatId, cat, cb.message.message_id);
       return;
     }
 
