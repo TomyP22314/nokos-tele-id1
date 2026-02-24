@@ -585,39 +585,75 @@ await tgSendMessage(
 }
 
 /* ================= MENUS ================= */
-async function showCategories(chatId) {
+async function showCategoriesEdit(chatId, messageId) {
   const categories = await getCategories();
   if (!categories.length) {
-    await tgSendMessage(chatId, "⚠️ Kategori kosong. Isi dulu di sheet tab <b>CATEGORIES</b> kolom A.");
+    await tgEditMessage(chatId, messageId, "⚠️ Kategori kosong. Isi dulu di sheet tab <b>CATEGORIES</b>.");
     return;
   }
 
   const buttons = categories.map((c) => [{ text: c, callback_data: `CAT_${c}` }]);
+  // optional: tombol lain
+  buttons.push([{ text: "🏠 Home", callback_data: "HOME" }]);
 
-  await tgSendMessage(chatId, "📦 <b>Pilih Kategori:</b>", {
-    reply_markup: { inline_keyboard: buttons },
+  await tgEditMessage(chatId, messageId, "📦 <b>Pilih Kategori:</b>", {
+    reply_markup: { inline_keyboard: buttons }
   });
-}
+                   }
 
-async function showProducts(chatId, cat, messageId) {
+async function showProducts(chatId, cat, messageId, page = 1) {
   const products = await getProducts(cat);
+
+  const perPage = 6; // jumlah tombol per halaman (ubah bebas)
+  const totalPages = Math.max(1, Math.ceil(products.length / perPage));
+  page = Math.min(Math.max(page, 1), totalPages);
+
   if (!products.length) {
-    await tgSendMessage(chatId, `⚠️ Produk di <b>${cat}</b> masih kosong.`);
+    await tgEditMessage(
+      chatId,
+      messageId,
+      `⚠️ Produk di <b>${cat}</b> masih kosong.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "⬅️ Kembali", callback_data: "BACK_CAT" },
+              { text: "🏠 Home", callback_data: "HOME" }
+            ]
+          ]
+        }
+      }
+    );
     return;
   }
 
-  const buttons = products.map((p) => [
-    {
-      text: `${p.name} — ${rupiah(p.price)}`,
-      callback_data: `BUY_${cat}_${p.id}`,
-    },
+  const start = (page - 1) * perPage;
+  const slice = products.slice(start, start + perPage);
+
+  const keyboard = slice.map((p) => ([
+    { text: `${p.name} — ${rupiah(p.price)}`, callback_data: `BUY_${cat}_${p.id}` }
+  ]));
+
+  // baris pagination
+  const navRow = [];
+  if (page > 1) navRow.push({ text: "⬅️ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
+  navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
+  if (page < totalPages) navRow.push({ text: "Next ➡️", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
+  keyboard.push(navRow);
+
+  // baris back/home
+  keyboard.push([
+    { text: "⬅️ Kembali", callback_data: "BACK_CAT" },
+    { text: "🏠 Home", callback_data: "HOME" }
   ]);
 
-await tgEditMessage(chatId, messageId, "📦 <b>Produk " + cat + "</b>\nPilih salah satu:", {
-  reply_markup: { inline_keyboard: buttons },
-});
+  await tgEditMessage(
+    chatId,
+    messageId,
+    `📦 <b>Produk ${cat}</b>\nPilih salah satu:`,
+    { reply_markup: { inline_keyboard: keyboard } }
+  );
 }
-
 /* ================= UPDATE HANDLER ================= */
 async function handleUpdate(update) {
   const msg = update.message;
@@ -651,6 +687,42 @@ async function handleUpdate(update) {
       await showProducts(chatId, cat, cb.message.message_id);
       return;
     }
+
+    // pagination
+if (data.startsWith("PROD_PAGE_")) {
+  const parts = data.split("_");
+  const cat = parts[2];
+  const page = Number(parts[3] || 1);
+
+  await tgAnswerCallback(cb.id, "Muat halaman...", false);
+  await showProducts(chatId, cat, cb.message.message_id, page);
+  return;
+}
+
+// tombol kembali ke kategori
+if (data === "BACK_CAT") {
+  await tgAnswerCallback(cb.id, "Kembali ke kategori...", false);
+  await showCategoriesEdit(chatId, cb.message.message_id);
+  return;
+}
+
+// tombol home
+if (data === "HOME") {
+  await tgAnswerCallback(cb.id, "Kembali ke menu...", false);
+  await tgEditMessage(
+    chatId,
+    cb.message.message_id,
+    "🏠 <b>Menu Utama</b>\nPilih:",
+    { reply_markup: mainMenuKeyboard(isAdmin) }
+  );
+  return;
+}
+
+// tombol nomor halaman (NOOP)
+if (data === "NOOP") {
+  await tgAnswerCallback(cb.id, "", false);
+  return;
+}
 
     // BUY
     if (data.startsWith("BUY_")) {
