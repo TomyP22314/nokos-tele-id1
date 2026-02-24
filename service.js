@@ -310,15 +310,31 @@ async function getProducts(category) {
 /* ================= PAYMENT (PAKASIR) ================= */
 async function getPaymentDetail(amount, invoice) {
   const url =
-    `https://app.pakasir.com/api/transactiondetail` +
+    "https://app.pakasir.com/api/transactiondetail" +
     `?project=${encodeURIComponent(PAYMENT_PROJECT_SLUG)}` +
     `&amount=${encodeURIComponent(amount)}` +
     `&order_id=${encodeURIComponent(invoice)}` +
     `&api_key=${encodeURIComponent(PAYMENT_API_KEY)}`;
 
   const res = await fetch(url);
-  return res.json();
-}
+  const text = await res.text();
+
+  console.log("PAKASIR STATUS:", res.status);
+  console.log("PAKASIR BODY:", text);
+
+  if (!res.ok) {
+    throw new Error("PAKASIR ERROR " + res.status + ": " + text);
+  }
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    throw new Error("PAKASIR NOT JSON: " + text);
+  }
+
+  return data;
+    }
 
 /* ================= TRANSAKSI ================= */
 async function createTransaction(product, chatId, username) {
