@@ -665,7 +665,6 @@ if (text === "/start") {
   const memberRows = await read(TAB_MEMBER + "!A:C");
   const successRows = await read(TAB_TX_SUCCESS + "!A:G");
 
-  // kalau sheet kamu ada header, kamu bisa pakai -1 (optional)
   const totalMember = Math.max(memberRows.length - 1, 0);
   const totalSuccess = Math.max(successRows.length - 1, 0);
 
@@ -673,26 +672,28 @@ if (text === "/start") {
 
   const welcome =
     "✨ *GOMS APK MOD* ✨\n" +
-    "━━━━━━━━━━━━━━━━━━\n" +
+    "━━━━━━━━━━━━━━\n" +
     "📱 APK Khusus Android\n" +
     "⚡ Auto Kirim • Cepat • Aman\n" +
-    "🛡️ *Trusted *\n\n" +
+    "💎 *Trusted*\n\n" +
     "📊 *STATISTIK TOKO*\n" +
     "👥 Member: *" + totalMember + "*\n" +
     "✅ Transaksi Sukses: *" + totalSuccess + "*\n\n" +
     "💬 *TESTIMONI RANDOM*\n" +
     testimoni + "\n\n" +
-    "🎁 *INFO & PROMO*\n" +
-    "📢 Nokos Telegram: https://t.me/gomstele24jam_bot\n\n" +
+    "📌 *INFO & PROMO*\n" +
+    "📣 Nokos Telegram: https://t.me/gomstele24jam_bot\n\n" +
     "👇 *PILIH KATEGORI DI MENU & GAS SEKARANG* 👇";
 
   const isAdmin = String(chatId) === String(ADMIN_CHAT_ID);
 
   await tgSendMessage(chatId, welcome, {
-    reply_markup: mainMenuKeyboard(isAdmin)
+    parse_mode: "Markdown",
+    disable_web_page_preview: true,
+    reply_markup: mainMenuKeyboard(isAdmin),
   });
 
-  return res.sendStatus(200);
+  return; // ✅ jangan pakai res.sendStatus di sini
 }
 
     if (text === "🧾 Cek Pesanan") {
