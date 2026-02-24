@@ -488,20 +488,20 @@ console.log("QR STRING:", qrString);
       "💰 <b>Total</b>: <b>" + rupiah(product.price) + "</b>\n\n" +
       "Silakan scan QRIS di atas.\n" +
       "Setelah bayar, klik tombol <b>🔄 Cek Status</b>.",
-    {
-      {
-reply_markup: {
-  inline_keyboard: [
-    [
-      { text: "🔄 Cek Status", callback_data: `CEK_${invoice}` },
-      { text: "❌ Batalkan", callback_data: `CANCEL_${invoice}` },
-    ],
-    [
-      { text: "🏠 Home", callback_data: "HOME" },
-    ],
-  ],
-},
-}
+{
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "🧾 Cek Status", callback_data: `CEK_${invoice}` },
+          { text: "❌ Batalkan", callback_data: `CANCEL_${invoice}` },
+        ],
+        [
+          { text: "🏠 Home", callback_data: "HOME" },
+        ],
+      ],
+    },
+  }
+);
   const qrMsgId = sent?.result?.message_id || sent?.message_id;
 console.log("QR MSG ID SAVED:", qrMsgId);
 
@@ -670,6 +670,17 @@ async function handleUpdate(update) {
   const msg = update.message;
   const cb = update.callback_query;
 
+const from = msg?.from || cb?.from;
+const chat = msg?.chat || cb?.message?.chat;
+
+const chatIdGlobal = chat?.id;
+const usernameGlobal = from?.username;
+
+// sesuaikan dengan cara kamu simpan admin
+const isAdmin =
+  String(chatIdGlobal) === process.env.ADMIN_CHAT_ID ||
+  String(usernameGlobal || "") === String(process.env.ADMIN_USERNAME || "").replace("@", "");
+  
   // callback
   if (cb) {
     const chatId = cb.message?.chat?.id;
