@@ -600,7 +600,10 @@ async function showCategoriesEdit(chatId, messageId) {
     reply_markup: { inline_keyboard: buttons }
   });
                    }
-
+async function showCategories(chatId) {
+  const sent = await tgSendMessage(chatId, "⏳ Membuka kategori...");
+  await showCategoriesEdit(chatId, sent.result.message_id);
+    }
 async function showProducts(chatId, cat, messageId, page = 1) {
   const products = await getProducts(cat);
 
