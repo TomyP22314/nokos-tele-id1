@@ -832,8 +832,6 @@ if (data === "NOOP") {
     return;
   }
 
-  const isAdmin = String(chatId) === String(ADMIN_CHAT_ID);
-
   // /start
   if (text === "/start") {
     await addMember(chatId, username);
