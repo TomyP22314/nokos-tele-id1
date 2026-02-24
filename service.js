@@ -55,7 +55,7 @@ const TAB_BANNED = "BANNED";
 
 /* ================= TELEGRAM ================= */
 async function tg(method, body) {
-const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {    method: "POST",
+const res = await fetch(https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
