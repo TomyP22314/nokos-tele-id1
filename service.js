@@ -1,31 +1,135 @@
-```js
-// service.js (FINAL) - Copy Paste Full File
-// Features:
-// ✅ Reply keyboard menu: Kategori, Cek Pesanan, Cara Order, Bantuan, Ping, Panel Admin
-// ✅ Inline buttons: kategori -> produk -> bayar -> cek status
-// ✅ Google Sheets safe range quoting (tabs with spaces supported)
-// ✅ Pakasir QRIS create + detail + webhook auto-deliver
-// ✅ Anti-spam (RAM) + autoban (write to sheet only when banned)
-// ✅ Cache (banned + categories + products) to reduce Google Sheet load
-// ✅ Compatible with your sheet structure (7 columns TRANSAKSI)
-
 import express from "express";
 import fetch from "node-fetch";
 import { google } from "googleapis";
 import crypto from "crypto";
 
 const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json());
 
 /* ================= ENV ================= */
 const REQUIRED_ENVS = [
   "BOT_TOKEN",
   "ADMIN_CHAT_ID",
-  "GOOGLE_SERVICE_ACCOUNT_JSON",
   "SHEET_ID",
+  "WEBHOOK_SECRET",
   "PAYMENT_PROJECT_SLUG",
   "PAYMENT_API_KEY",
 ];
+
+// Google SA env name fallback (kamu punya yang mana saja boleh)
+const SA_ENV_KEYS = [
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+];
+
+function pickServiceAccountJSON() {
+  // Cari env yang ada isinya
+  for (const k of ["GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON"]) {
+    if (process.env[k]) return process.env[k];
+  }
+  // Fallback: nama yang kamu pakai sebelumnya
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  return null;
+}
 
 for (const k of REQUIRED_ENVS) {
   if (!process.env[k]) {
@@ -34,18 +138,21 @@ for (const k of REQUIRED_ENVS) {
   }
 }
 
-const {
-  BOT_TOKEN,
-  ADMIN_CHAT_ID,
-  GOOGLE_SERVICE_ACCOUNT_JSON,
-  SHEET_ID,
-  PAYMENT_PROJECT_SLUG,
-  PAYMENT_API_KEY,
-} = process.env;
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_CHAT_ID = String(process.env.ADMIN_CHAT_ID);
+const SHEET_ID = process.env.SHEET_ID;
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
-const SPAM_STRIKES_TO_BAN = Number(process.env.SPAM_STRIKES_TO_BAN || 3);
+const PAYMENT_PROJECT_SLUG = process.env.PAYMENT_PROJECT_SLUG;
+const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY;
 
-/* ================= TABS ================= */
+const SA_JSON = pickServiceAccountJSON();
+if (!SA_JSON) {
+  console.error("Missing ENV: GOOGLE_SERVICE_ACCOUNT_JSON (service account json)");
+  process.exit(1);
+}
+
+/* ================= CONSTANT TAB ================= */
 const TAB_MEMBER = "MEMBER LIST";
 const TAB_TX = "TRANSAKSI";
 const TAB_TX_SUCCESS = "TRANSAKSI BERHASIL";
@@ -59,39 +166,41 @@ async function tg(method, body) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(body || {}),
   });
   return res.json();
 }
 
-async function tgSafeSendMessage(chatId, text, extra = {}) {
+async function tgSafeSendMessage(chatId, text, extra) {
   try {
-    return await tg("sendMessage", { chat_id: chatId, text, ...extra });
+    const payload = Object.assign({ chat_id: chatId, text: text }, extra || {});
+    return await tg("sendMessage", payload);
   } catch (e) {
-    console.log("TG sendMessage error:", e?.message);
+    console.log("TG sendMessage error:", e && e.message ? e.message : e);
   }
 }
 
-async function tgSafeSendPhoto(chatId, photo, caption, extra = {}) {
+async function tgSafeSendPhoto(chatId, photo, caption, extra) {
   try {
-    return await tg("sendPhoto", { chat_id: chatId, photo, caption, ...extra });
+    const payload = Object.assign({ chat_id: chatId, photo: photo, caption: caption }, extra || {});
+    return await tg("sendPhoto", payload);
   } catch (e) {
-    console.log("TG sendPhoto error:", e?.message);
+    console.log("TG sendPhoto error:", e && e.message ? e.message : e);
   }
 }
 
-async function tgAnswerCallback(cbId, text, showAlert = false) {
+async function tgAnswerCallback(cbId, text, showAlert) {
   try {
     return await tg("answerCallbackQuery", {
       callback_query_id: cbId,
-      text,
-      show_alert: showAlert,
+      text: text || "",
+      show_alert: !!showAlert,
     });
   } catch (e) {}
 }
 
 /* ================= GOOGLE ================= */
-const sa = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON);
+const sa = JSON.parse(SA_JSON);
 
 const auth = new google.auth.JWT(
   sa.client_email,
@@ -102,12 +211,13 @@ const auth = new google.auth.JWT(
 
 const sheets = google.sheets({ version: "v4", auth });
 
+// Quote helper: turn "TAB!A:B" into "'TAB'!A:B" to support spaces safely
 function qSheet(range) {
-  if (range.startsWith("'")) return range;
-  const idx = range.indexOf("!");
+  if (String(range || "").startsWith("'")) return range;
+  const idx = String(range || "").indexOf("!");
   if (idx === -1) return range;
-  const tab = range.slice(0, idx);
-  const rest = range.slice(idx);
+  const tab = String(range).slice(0, idx);
+  const rest = String(range).slice(idx);
   return "'" + tab + "'" + rest;
 }
 
@@ -116,7 +226,7 @@ async function read(range) {
     spreadsheetId: SHEET_ID,
     range: qSheet(range),
   });
-  return r.data.values || [];
+  return (r.data && r.data.values) ? r.data.values : [];
 }
 
 async function append(range, row) {
@@ -128,7 +238,7 @@ async function append(range, row) {
   });
 }
 
-async function update(range, value) {
+async function updateCell(range, value) {
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
     range: qSheet(range),
@@ -150,785 +260,800 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+function rupiah(n) {
+  const num = Number(n || 0);
+  return "Rp " + num.toLocaleString("id-ID");
+}
+
 function displayUser(username, chatId) {
-  const u = username ? "@" + username : "-";
-  return u + " | " + chatId;
+  const u = username ? ("@" + username) : "-";
+  return u + " | " + String(chatId);
 }
 
 function parseChatIdFromDisplay(display) {
-  const parts = String(display || "")
-    .split("|")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const parts = String(display || "").split("|").map(function (s) { return String(s).trim(); }).filter(Boolean);
+  if (!parts.length) return null;
   const maybe = parts[parts.length - 1];
   const n = Number(maybe);
-  return Number.isFinite(n) ? String(n) : null;
+  if (!Number.isFinite(n)) return null;
+  return String(n);
 }
 
 function normalizeStatus(s) {
   return String(s || "").trim().toUpperCase();
 }
 
-function rupiah(n) {
-  const num = Number(n || 0);
-  return "Rp " + num.toLocaleString("id-ID");
-}
-
 /* ================= REPLY KEYBOARD MENU ================= */
 function mainMenuKeyboard(isAdmin) {
   const base = [
-    [{ text: "📁 Kategori" }, { text: "📄 Cek Pesanan" }],
+    [{ text: "🗂️ Kategori" }, { text: "🧾 Cek Pesanan" }],
     [{ text: "📌 Cara Order" }, { text: "🆘 Bantuan" }],
-    [{ text: "🏓 Ping" }],
+    [{ text: "📍 Ping" }],
   ];
+  if (isAdmin) base.push([{ text: "🛠️ Panel Admin" }]);
+  return { keyboard: base, resize_keyboard: true, one_time_keyboard: false };
+}
 
-  if (isAdmin) {
-    base.push([{ text: "🧑‍💻 Panel Admin" }]);
+/* ================= ANTI SPAM + AUTO BAN ================= */
+// Tidak nulis ke sheet terus2an. Hanya nulis saat benar2 ban.
+const spamState = new Map();
+// config
+const SPAM_WINDOW_MS = 8000;    // 8 detik
+const SPAM_MAX_MSG = 10;        // max 10 event per window
+const SPAM_STRIKES_TO_BAN = 3;  // 3x pelanggaran -> ban
+
+function spamKey(chatId) {
+  return String(chatId);
+}
+
+function recordSpam(chatId) {
+  const key = spamKey(chatId);
+  const now = Date.now();
+
+  let st = spamState.get(key);
+  if (!st) st = { ts: [], strikes: 0, bannedAt: 0, lastWarnAt: 0 };
+  // cleanup old
+  st.ts = st.ts.filter(function (t) { return now - t <= SPAM_WINDOW_MS; });
+  st.ts.push(now);
+
+  // check
+  const tooMany = st.ts.length > SPAM_MAX_MSG;
+  if (tooMany) {
+    st.strikes += 1;
+    st.ts = []; // reset window after strike
   }
+  spamState.set(key, st);
+  return { tooMany: tooMany, strikes: st.strikes };
+}
 
-  return {
-    keyboard: base,
-    resize_keyboard: true,
-    one_time_keyboard: false,
-  };
+async function maybeAutoBan(chatId, reason) {
+  const key = spamKey(chatId);
+  const st = spamState.get(key);
+  if (!st) return false;
+  if (st.strikes >= SPAM_STRIKES_TO_BAN) {
+    // already banned in memory?
+    if (st.bannedAt && Date.now() - st.bannedAt < 24 * 3600 * 1000) return true;
+    st.bannedAt = Date.now();
+    spamState.set(key, st);
+
+    // write to sheet once
+    await banUser(chatId, reason || "AUTO BAN: SPAM");
+    await tgSafeSendMessage(chatId, "❌ Kamu diblokir otomatis karena spam. Hubungi admin jika salah.", {});
+    await tgSafeSendMessage(ADMIN_CHAT_ID, "⚠️ AUTO BAN\nChatID: " + chatId + "\nReason: " + (reason || "SPAM"), {});
+    return true;
+  }
+  return false;
 }
 
 /* ================= MEMBER SYSTEM ================= */
 async function addMember(chatId, username) {
-  const rows = await read(`${TAB_MEMBER}!A:C`);
-  const exists = rows.some((r) => String(r[2] || "").includes(String(chatId)));
+  const rows = await read(TAB_MEMBER + "!A:C");
+  // Kolom C berisi username/id
+  const exists = rows.some(function (r) {
+    return String(r && r[2] ? r[2] : "").indexOf(String(chatId)) !== -1;
+  });
   if (exists) return;
 
-  const nomor = rows.length; // includes header
-  await append(`${TAB_MEMBER}!A:C`, [
+  const nomor = rows.length; // simpel
+  await append(TAB_MEMBER + "!A:C", [
     nomor,
-    new Date().toISOString().slice(0, 10),
-    displayUser(username, chatId),
+    nowISO(),
+    username ? ("@" + username) : String(chatId),
   ]);
 }
 
-/* ================= BANNED CACHE (reduce sheet load) ================= */
-let bannedCache = new Set();
-let bannedCacheAt = 0;
-const BANNED_CACHE_TTL = 2 * 60 * 1000;
-
-async function refreshBannedCacheIfNeeded() {
-  const now = Date.now();
-  if (now - bannedCacheAt < BANNED_CACHE_TTL) return;
-
-  const rows = await read(`${TAB_BANNED}!A:C`);
-  bannedCache = new Set(rows.slice(1).map((r) => String(r[0])));
-  bannedCacheAt = now;
-}
-
 async function isBanned(chatId) {
-  await refreshBannedCacheIfNeeded();
-  return bannedCache.has(String(chatId));
+  const rows = await read(TAB_BANNED + "!A:C");
+  return rows.some(function (r) { return String(r && r[0]) === String(chatId); });
 }
 
 async function banUser(chatId, reason) {
-  await refreshBannedCacheIfNeeded();
-  if (bannedCache.has(String(chatId))) return;
-
-  await append(`${TAB_BANNED}!A:C`, [String(chatId), reason || "No reason", nowISO()]);
-  bannedCache.add(String(chatId));
+  await append(TAB_BANNED + "!A:C", [
+    String(chatId),
+    reason || "No reason",
+    nowISO(),
+  ]);
 }
 
 async function unbanUser(chatId) {
-  const rows = await read(`${TAB_BANNED}!A:C`);
-  const index = rows.findIndex((r) => String(r[0]) === String(chatId));
+  const rows = await read(TAB_BANNED + "!A:C");
+  let index = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(chatId)) { index = i; break; }
+  }
   if (index >= 0) {
+    // clear that row (A:C)
     await clearRow(TAB_BANNED, index + 1, "C");
-    bannedCache.delete(String(chatId));
   }
 }
 
-/* ================= CATEGORY + PRODUCT CACHE ================= */
-let catCache = { data: null, at: 0 };
-const CAT_TTL = 60 * 1000;
-
+/* ================= CATEGORY + PRODUCT ================= */
 async function getCategories() {
-  const rows = await read(`${TAB_CATEGORY}!A:B`);
-  return rows.slice(1).map((r) => r[0]).filter(Boolean);
+  const rows = await read(TAB_CATEGORY + "!A:A");
+  // Tidak pakai header. Semua baris non-kosong dianggap kategori.
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const v = rows[i] && rows[i][0] ? String(rows[i][0]).trim() : "";
+    if (v) out.push(v);
+  }
+  return out;
 }
-
-async function getCategoriesCached() {
-  const now = Date.now();
-  if (catCache.data && now - catCache.at < CAT_TTL) return catCache.data;
-  const data = await getCategories();
-  catCache = { data, at: now };
-  return data;
-}
-
-const prodCache = new Map(); // category -> { data, at }
-const PROD_TTL = 60 * 1000;
 
 async function getProducts(category) {
-  const rows = await read(`${category}!A:F`);
-  return rows.slice(1).map((r, i) => ({
-    id: r[0],
-    name: r[1],
-    link: r[2],
-    desc: r[3],
-    stock: r[4],
-    price: r[5],
-    rowIndex: i + 2,
-    tab: category,
-  }));
-}
-
-async function getProductsCached(category) {
-  const now = Date.now();
-  const hit = prodCache.get(category);
-  if (hit && now - hit.at < PROD_TTL) return hit.data;
-  const data = await getProducts(category);
-  prodCache.set(category, { data, at: now });
-  return data;
-}
-
-async function getProductById(productId) {
-  const categories = await getCategoriesCached();
-  for (const cat of categories) {
-    const prods = await getProductsCached(cat);
-    const found = prods.find((p) => String(p.id) === String(productId));
-    if (found) return found;
+  const rows = await read(category + "!A:F");
+  // rows[0] header
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const id = r[0];
+    const name = r[1];
+    const link = r[2];
+    const desc = r[3];
+    const stock = r[4];
+    const price = r[5];
+    if (!id || !name) continue;
+    out.push({
+      id: String(id).trim(),
+      name: String(name || "").trim(),
+      link: String(link || "").trim(),
+      desc: String(desc || "").trim(),
+      stock: String(stock || "").trim(),
+      price: String(price || "").trim(),
+      rowIndex: i + 1, // real row in sheet
+      tab: category,
+    });
   }
-  return null;
+  return out;
+}
+
+function isOutOfStock(stockVal) {
+  const s = String(stockVal || "").trim().toUpperCase();
+  if (!s) return false;
+  if (s === "UNLIMITED") return false;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return false;
+  return n <= 0;
 }
 
 /* ================= PAYMENT (PAKASIR) ================= */
-async function createPakasirQRIS(amount, orderId) {
-  const url = "https://app.pakasir.com/api/transactioncreate/qris";
-  const body = {
-    project: PAYMENT_PROJECT_SLUG,
-    order_id: orderId,
-    amount: Number(amount),
-    api_key: PAYMENT_API_KEY,
-  };
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const json = await res.json().catch(() => ({}));
-  return json;
-}
-
 async function getPaymentDetail(amount, invoice) {
   const url =
-    `https://app.pakasir.com/api/transactiondetail` +
-    `?project=${encodeURIComponent(PAYMENT_PROJECT_SLUG)}` +
-    `&amount=${encodeURIComponent(amount)}` +
-    `&order_id=${encodeURIComponent(invoice)}` +
-    `&api_key=${encodeURIComponent(PAYMENT_API_KEY)}`;
+    "https://app.pakasir.com/api/transactiondetail" +
+    "?project=" + encodeURIComponent(PAYMENT_PROJECT_SLUG) +
+    "&amount=" + encodeURIComponent(String(amount)) +
+    "&order_id=" + encodeURIComponent(String(invoice)) +
+    "&api_key=" + encodeURIComponent(PAYMENT_API_KEY);
 
   const res = await fetch(url);
   return res.json();
 }
 
-function buildQrImageUrlFromQrString(qrString) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
-    qrString
-  )}`;
+function extractQRUrl(pay) {
+  if (!pay) return null;
+  if (pay.transaction && pay.transaction.qr_url) return pay.transaction.qr_url;
+  if (pay.transaction && pay.transaction.qris_url) return pay.transaction.qris_url;
+  if (pay.qr_url) return pay.qr_url;
+  if (pay.qris_url) return pay.qris_url;
+  return null;
 }
 
-/* ================= TRANSAKSI (7 COLUMNS) =================
-A tanggal
-B id produk
-C nama produk
-D username/id pembeli => "@user | chatId"
-E invoice
-F harga
-G status
-*/
-async function createTransaction(product, chatId, username) {
-  const invoice = "INV-" + Date.now() + "-" + crypto.randomBytes(2).toString("hex");
+function extractStatus(pay) {
+  const s =
+    (pay && pay.transaction && pay.transaction.status) ? pay.transaction.status :
+    (pay && pay.status) ? pay.status :
+    "";
+  return normalizeStatus(s);
+}
 
-  await append(`${TAB_TX}!A:G`, [
+/* ================= TRANSAKSI ================= */
+// Format TRANSAKSI sheet (A..G):
+// A TANGGAL | B ID PRODUK | C NAMA PRODUK | D USERNAME/ID PEMBELI | E INVOICE | F HARGA | G STATUS
+
+async function createTransaction(product, chatId, username) {
+  const invoice = "INV-" + Date.now() + "-" + crypto.randomBytes(2).toString("hex").toUpperCase();
+
+  await append(TAB_TX + "!A:G", [
     nowISO(),
     product.id,
     product.name,
     displayUser(username, chatId),
     invoice,
-    String(product.price),
+    String(product.price || "0"),
     "PENDING",
   ]);
 
   return invoice;
 }
 
-async function findTransactionInTab(tab, invoice) {
-  const rows = await read(`${tab}!A:G`);
-  for (let i = 1; i < rows.length; i++) {
-    const inv = rows[i][4]; // E
-    if (String(inv) === String(invoice)) {
-      return { rowIndex: i + 1, data: rows[i] };
+async function findTransaction(invoice) {
+  const rows = await read(TAB_TX + "!A:G");
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || [];
+    if (String(r[4]) === String(invoice)) {
+      return { rowIndex: i + 1, data: r };
     }
   }
   return null;
 }
 
-async function findTransaction(invoice) {
-  return findTransactionInTab(TAB_TX, invoice);
-}
-
 async function markSuccess(rowIndex, rowData) {
-  await update(`${TAB_TX}!G${rowIndex}`, "SUCCESS");
-  const newRow = [...rowData];
-  newRow[6] = "SUCCESS";
-  await append(`${TAB_TX_SUCCESS}!A:G`, newRow);
+  // update status in place first (G)
+  await updateCell(TAB_TX + "!G" + rowIndex, "SUCCESS");
+  // append to success log
+  await append(TAB_TX_SUCCESS + "!A:G", rowData);
+  // clear from active transaksi
   await clearRow(TAB_TX, rowIndex, "G");
 }
 
-async function markFailed(rowIndex, rowData, statusText = "FAILED") {
-  await update(`${TAB_TX}!G${rowIndex}`, statusText);
-  const newRow = [...rowData];
-  newRow[6] = statusText;
-  await append(`${TAB_TX_FAIL}!A:G`, newRow);
+async function markFailed(rowIndex, rowData, statusText) {
+  await updateCell(TAB_TX + "!G" + rowIndex, statusText || "FAILED");
+  await append(TAB_TX_FAIL + "!A:G", rowData);
   await clearRow(TAB_TX, rowIndex, "G");
 }
 
-/* ================= ORDER UI ================= */
-async function showCategories(chatId, isAdmin = false) {
-  const categories = await getCategoriesCached();
-  if (!categories.length) {
-    await tgSafeSendMessage(
-      chatId,
-      "⚠️ Kategori belum diisi.\nBuat tab 'CATEGORIES' dan isi kolom A dengan nama kategori (contoh: APK NONTON).",
-      { reply_markup: { keyboard: mainMenuKeyboard(isAdmin).keyboard, resize_keyboard: true } }
-    );
-    return;
-  }
-
-  const buttons = categories.map((c) => [{ text: c, callback_data: `CAT_${c}` }]);
-
-  await tgSafeSendMessage(chatId, "📁 Pilih kategori:", {
-    reply_markup: { inline_keyboard: buttons },
-  });
-}
-
-async function showProducts(chatId, category) {
-  const products = await getProductsCached(category);
-
-  if (!products.length) {
-    await tgSafeSendMessage(chatId, `⚠️ Produk di "${category}" masih kosong.`);
-    return;
-  }
-
-  const buttons = products.map((p) => [
-    {
-      text: `${p.name} - ${rupiah(p.price)}`,
-      callback_data: `BUY_${category}_${p.id}`,
-    },
-  ]);
-
-  await tgSafeSendMessage(chatId, `📦 Produk ${category}:`, {
-    reply_markup: { inline_keyboard: buttons },
-  });
-}
-
-/* ================= AUTO QRIS ================= */
+/* ================= QRIS SEND ================= */
 async function sendQRIS(chatId, product, invoice) {
-  const created = await createPakasirQRIS(product.price, invoice);
+  const pay = await getPaymentDetail(product.price, invoice);
+  const qr = extractQRUrl(pay);
 
-  const payment = created?.payment || created?.transaction || null;
-  const qrString = payment?.payment_number || null;
-  const totalPayment = payment?.total_payment || product.price;
-
-  if (!qrString) {
-    await tgSafeSendMessage(
-      chatId,
-      "⚠️ Gagal membuat QRIS.\nCoba lagi beberapa saat, atau hubungi admin."
-    );
-
-    await tgSafeSendMessage(
-      ADMIN_CHAT_ID,
-      `⚠️ Gagal create QRIS\nInvoice: ${invoice}\nResp: ${JSON.stringify(created).slice(0, 1500)}`
-    );
+  if (!qr) {
+    await tgSafeSendMessage(chatId, "⚠️ QRIS belum tersedia. Coba klik Cek Status beberapa saat lagi.", {});
     return;
   }
 
-  const qrImageUrl = buildQrImageUrlFromQrString(qrString);
+  const caption =
+    "🧾 Invoice: " + invoice + "\n" +
+    "📦 Produk: " + product.name + "\n" +
+    "💰 Total: " + rupiah(product.price) + "\n\n" +
+    "Silakan scan QRIS di atas.\n" +
+    "Setelah bayar, klik tombol Cek Status.";
 
-  await tgSafeSendPhoto(chatId, qrImageUrl, 
-    `🧾 Invoice: ${invoice}\n` +
-    `📦 Produk: ${product.name}\n` +
-    `💰 Total Bayar: ${rupiah(totalPayment)}\n\n` +
-    `Silakan scan QRIS.\n` +
-    `Setelah bayar, bot akan otomatis kirim produk.\n` +
-    `Atau klik tombol cek status.`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "🔄 Cek Status", callback_data: `CEK_${invoice}` }],
-        ],
-      },
-    }
-  );
+  await tgSafeSendPhoto(chatId, qr, caption, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🔄 Cek Status", callback_data: "CEK_" + invoice }],
+      ],
+    },
+  });
 }
 
-/* ================= DELIVERY ================= */
-async function deliverProduct(row) {
-  const productId = row[1]; // B
-  const buyerDisplay = row[3]; // D
-  const invoice = row[4];
-  const chatId = parseChatIdFromDisplay(buyerDisplay);
-
-  if (!chatId) {
-    await tgSafeSendMessage(
-      ADMIN_CHAT_ID,
-      `⚠️ Deliver gagal: chat_id tidak terbaca.\nBuyer: ${buyerDisplay}\nInvoice: ${invoice}`
-    );
-    return { ok: false, reason: "CHAT_ID_NOT_FOUND" };
-  }
-
-  const product = await getProductById(productId);
-  if (!product) {
-    await tgSafeSendMessage(
-      ADMIN_CHAT_ID,
-      `⚠️ Produk tidak ditemukan.\nProductId: ${productId}\nInvoice: ${invoice}`
-    );
-    return { ok: false, reason: "PRODUCT_NOT_FOUND" };
-  }
-
-  // Stock check
-  if (String(product.stock).toUpperCase() !== "UNLIMITED") {
-    const current = Number(product.stock || 0);
-    if (current <= 0) {
-      await tgSafeSendMessage(chatId, "⚠️ Maaf, stok habis. Hubungi admin.");
-      await tgSafeSendMessage(
-        ADMIN_CHAT_ID,
-        `⚠️ Stok habis saat deliver.\nProduk: ${product.name}\nInvoice: ${invoice}`
-      );
-      return { ok: false, reason: "OUT_OF_STOCK" };
-    }
-    await update(`${product.tab}!E${product.rowIndex}`, current - 1);
-    // Clear product cache for this tab so stock updates reflect
-    prodCache.delete(product.tab);
-  }
-
-  await tgSafeSendMessage(
-    chatId,
-    `✅ Pembayaran Berhasil!\n\n📦 ${product.name}\n\n🔗 Link Download:\n${product.link}`
-  );
-
-  return { ok: true };
-}
-
-/* ================= CEK STATUS ================= */
+/* ================= DELIVER ================= */
 async function checkAndDeliver(chatId, invoice) {
   const tx = await findTransaction(invoice);
-
   if (!tx) {
-    const done = await findTransactionInTab(TAB_TX_SUCCESS, invoice);
-    if (done) {
-      await tgSafeSendMessage(chatId, "✅ Transaksi ini sudah SUCCESS sebelumnya. Silakan cek pesan link produk ya.");
-      return;
-    }
-    const failed = await findTransactionInTab(TAB_TX_FAIL, invoice);
-    if (failed) {
-      await tgSafeSendMessage(chatId, "❌ Transaksi ini sudah tercatat GAGAL/EXPIRED.");
-      return;
-    }
-
-    await tgSafeSendMessage(chatId, "Invoice tidak ditemukan.");
+    await tgSafeSendMessage(chatId, "Invoice tidak ditemukan di TRANSAKSI.", {});
     return;
   }
 
   const row = tx.data;
-  const amount = row[5]; // F
+  const statusNow = normalizeStatus(row[6]);
+
+  if (statusNow === "SUCCESS") {
+    await tgSafeSendMessage(chatId, "Transaksi ini sudah SUCCESS sebelumnya.", {});
+    return;
+  }
+
+  const amount = row[5];
   const detail = await getPaymentDetail(amount, invoice);
+  const st = extractStatus(detail);
 
-  const status = normalizeStatus(detail?.transaction?.status || detail?.status);
+  if (st === "COMPLETED" || st === "PAID" || st === "SUCCESS") {
+    // cari produk berdasarkan ID (B)
+    const productId = String(row[1] || "").trim();
+    const categories = await getCategories();
 
-  if (status === "COMPLETED") {
-    const delivered = await deliverProduct(row);
-    if (delivered.ok) {
-      await markSuccess(tx.rowIndex, row);
-    } else {
-      await tgSafeSendMessage(
-        ADMIN_CHAT_ID,
-        `⚠️ Pembayaran completed tapi deliver gagal (${delivered.reason}). Invoice: ${invoice}`
-      );
+    let product = null;
+    for (let i = 0; i < categories.length; i++) {
+      const cat = categories[i];
+      const prods = await getProducts(cat);
+      for (let j = 0; j < prods.length; j++) {
+        if (String(prods[j].id) === productId) { product = prods[j]; break; }
+      }
+      if (product) break;
     }
-    return;
-  }
 
-  if (["EXPIRED", "FAILED", "CANCELLED", "CANCELED"].includes(status)) {
-    await markFailed(tx.rowIndex, row, status);
-    await tgSafeSendMessage(chatId, `❌ Transaksi ${status}.`);
-    return;
-  }
-
-  await tgSafeSendMessage(chatId, "Status: " + (status || "MENUNGGU PEMBAYARAN"));
-}
-
-/* ================= LAST ORDER LOOKUP (Cek Pesanan) ================= */
-async function getLastOrderForChat(chatId) {
-  const rows = await read(`${TAB_TX}!A:G`);
-  // scan from bottom
-  for (let i = rows.length - 1; i >= 1; i--) {
-    const buyer = rows[i][3];
-    const cid = parseChatIdFromDisplay(buyer);
-    if (String(cid) === String(chatId)) {
-      return { tab: TAB_TX, rowIndex: i + 1, row: rows[i] };
-    }
-  }
-  // also check success
-  const succ = await read(`${TAB_TX_SUCCESS}!A:G`);
-  for (let i = succ.length - 1; i >= 1; i--) {
-    const buyer = succ[i][3];
-    const cid = parseChatIdFromDisplay(buyer);
-    if (String(cid) === String(chatId)) {
-      return { tab: TAB_TX_SUCCESS, rowIndex: i + 1, row: succ[i] };
-    }
-  }
-  // fail
-  const fail = await read(`${TAB_TX_FAIL}!A:G`);
-  for (let i = fail.length - 1; i >= 1; i--) {
-    const buyer = fail[i][3];
-    const cid = parseChatIdFromDisplay(buyer);
-    if (String(cid) === String(chatId)) {
-      return { tab: TAB_TX_FAIL, rowIndex: i + 1, row: fail[i] };
-    }
-  }
-  return null;
-}
-
-/* ================= ANTI SPAM (RAM) ================= */
-const spamState = new Map();
-/*
-spamState.get(chatId) = {
-  msg: { count, ts },
-  cb: { count, ts },
-  strikes,
-  lastWarnAt
-}
-*/
-
-function getSpam(chatId) {
-  const key = String(chatId);
-  if (!spamState.has(key)) {
-    spamState.set(key, {
-      msg: { count: 0, ts: Date.now() },
-      cb: { count: 0, ts: Date.now() },
-      strikes: 0,
-      lastWarnAt: 0,
-    });
-  }
-  return spamState.get(key);
-}
-
-function hitLimiter(bucket, limit, windowMs) {
-  const now = Date.now();
-  if (now - bucket.ts > windowMs) {
-    bucket.ts = now;
-    bucket.count = 0;
-  }
-  bucket.count += 1;
-  return bucket.count > limit;
-}
-
-async function warnOrBan(chatId, reason) {
-  const s = getSpam(chatId);
-  const now = Date.now();
-
-  // Only warn at most every 30s to avoid noisy chats
-  const canWarn = now - s.lastWarnAt > 30_000;
-  s.lastWarnAt = canWarn ? now : s.lastWarnAt;
-
-  s.strikes += 1;
-
-  if (s.strikes >= SPAM_STRIKES_TO_BAN) {
-    await banUser(chatId, `AutoBan Spam: ${reason}`);
-    if (canWarn) {
-      await tgSafeSendMessage(chatId, "❌ Kamu diblokir otomatis karena spam.");
-    }
-    await tgSafeSendMessage(
-      ADMIN_CHAT_ID,
-      `🚫 AutoBan spam\nChat: ${chatId}\nReason: ${reason}\nStrikes: ${s.strikes}`
-    );
-    return true;
-  } else {
-    if (canWarn) {
-      await tgSafeSendMessage(chatId, `⚠️ Jangan spam ya. (Peringatan ${s.strikes}/${SPAM_STRIKES_TO_BAN})`);
-    }
-    return false;
-  }
-}
-
-/* ================= PAKASIR WEBHOOK (AUTO DELIVER) ================= */
-app.post("/pakasir/webhook", async (req, res) => {
-  try {
-    res.sendStatus(200);
-
-    const body = req.body || {};
-    const invoice = body.order_id;
-    const amount = body.amount;
-    const status = normalizeStatus(body.status);
-
-    if (!invoice || !amount) return;
-    if (body.project && String(body.project) !== String(PAYMENT_PROJECT_SLUG)) return;
-    if (status !== "COMPLETED") return;
-
-    const tx = await findTransaction(invoice);
-    if (!tx) return;
-
-    const row = tx.data;
-    const sheetAmount = String(row[5]); // F
-    if (String(sheetAmount) !== String(amount)) {
-      await tgSafeSendMessage(
-        ADMIN_CHAT_ID,
-        `⚠️ Webhook amount mismatch\nInvoice: ${invoice}\nWebhook: ${amount}\nSheet: ${sheetAmount}`
-      );
+    if (!product) {
+      await tgSafeSendMessage(ADMIN_CHAT_ID, "⚠️ Produk tidak ditemukan untuk invoice " + invoice + " (ID=" + productId + ")", {});
+      await tgSafeSendMessage(chatId, "✅ Pembayaran terdeteksi, tapi produk tidak ditemukan. Admin sudah diberi tahu.", {});
       return;
     }
 
-    const delivered = await deliverProduct(row);
-    if (delivered.ok) {
-      await markSuccess(tx.rowIndex, row);
+    // Cek stok
+    if (isOutOfStock(product.stock)) {
+      await tgSafeSendMessage(ADMIN_CHAT_ID, "⚠️ STOK HABIS: " + product.name + " | invoice " + invoice, {});
+      await tgSafeSendMessage(chatId, "✅ Pembayaran berhasil, tapi stok produk habis. Admin akan proses manual.", {});
+      return;
     }
-  } catch (e) {
-    console.log("PAKASIR WEBHOOK ERROR:", e?.message);
+
+    // Kurangi stok jika bukan UNLIMITED
+    const s = String(product.stock || "").trim().toUpperCase();
+    if (s && s !== "UNLIMITED") {
+      const n = Number(s);
+      if (Number.isFinite(n) && n > 0) {
+        await updateCell(product.tab + "!E" + product.rowIndex, String(n - 1));
+      }
+    }
+
+    // Mark success (pindah ke sheet sukses + hapus dari transaksi)
+    await markSuccess(tx.rowIndex, row);
+
+    // kirim produk
+    const buyerChatId = parseChatIdFromDisplay(row[3]) || String(chatId);
+    const msg =
+      "✅ Pembayaran Berhasil!\n\n" +
+      "📦 " + product.name + "\n\n" +
+      (product.desc ? ("📝 " + product.desc + "\n\n") : "") +
+      "🔗 Link Download:\n" + (product.link || "-");
+
+    await tgSafeSendMessage(buyerChatId, msg, { reply_markup: mainMenuKeyboard(String(buyerChatId) === ADMIN_CHAT_ID) });
+    return;
   }
-});
 
-/* ================= TELEGRAM HANDLER (WEBHOOK ROOT "/") ================= */
-app.post("/", async (req, res) => {
-  // Always reply 200 quickly to Telegram
-  res.sendStatus(200);
+  if (st === "EXPIRED" || st === "FAILED" || st === "CANCELLED") {
+    await markFailed(tx.rowIndex, row, st || "FAILED");
+    await tgSafeSendMessage(chatId, "❌ Transaksi " + (st || "GAGAL/EXPIRED") + ".", {});
+    return;
+  }
 
+  await tgSafeSendMessage(chatId, "Status: " + (st || "MENUNGGU PEMBAYARAN"), {});
+}
+
+/* ================= UI: KATEGORI & PRODUK ================= */
+async function sendCategoryList(chatId) {
+  const cats = await getCategories();
+  if (!cats.length) {
+    await tgSafeSendMessage(chatId, "Kategori kosong. Cek sheet CATEGORIES kolom A.", {});
+    return;
+  }
+
+  const buttons = [];
+  for (let i = 0; i < cats.length; i++) {
+    buttons.push([{ text: cats[i], callback_data: "CAT_" + cats[i] }]);
+  }
+
+  await tgSafeSendMessage(chatId, "🗂️ Pilih kategori:", {
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+async function sendProductList(chatId, category) {
+  const prods = await getProducts(category);
+  if (!prods.length) {
+    await tgSafeSendMessage(chatId, "Produk kosong di kategori: " + category, {});
+    return;
+  }
+
+  const buttons = [];
+  for (let i = 0; i < prods.length; i++) {
+    const p = prods[i];
+    const priceTxt = rupiah(p.price);
+    const stokTxt = (String(p.stock || "").toUpperCase() === "UNLIMITED") ? "∞" : String(p.stock || "0");
+    const title = p.name + " • " + priceTxt + " • stok " + stokTxt;
+    buttons.push([{ text: title, callback_data: "BUY_" + category + "_" + p.id }]);
+  }
+
+  await tgSafeSendMessage(chatId, "📦 Produk " + category + "\nPilih produk:", {
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+/* ================= CEK PESANAN (LIST PENDING USER) ================= */
+async function listMyPending(chatId) {
+  const rows = await read(TAB_TX + "!A:G");
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const buyer = String(r[3] || "");
+    if (buyer.indexOf(String(chatId)) !== -1) {
+      const st = normalizeStatus(r[6]);
+      if (st === "PENDING") out.push(r);
+    }
+  }
+
+  if (!out.length) {
+    await tgSafeSendMessage(chatId, "Tidak ada pesanan PENDING.", {});
+    return;
+  }
+
+  const buttons = [];
+  for (let i = 0; i < out.length; i++) {
+    const inv = String(out[i][4] || "");
+    const nm = String(out[i][2] || "");
+    buttons.push([{ text: "🔄 " + nm + " (" + inv + ")", callback_data: "CEK_" + inv }]);
+  }
+
+  await tgSafeSendMessage(chatId, "🧾 Pesanan PENDING kamu:\nKlik untuk cek status:", {
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+/* ================= ADMIN PANEL (BASIC) ================= */
+const adminState = new Map(); // adminChatId -> { mode, data }
+
+function isAdminChat(chatId) {
+  return String(chatId) === String(ADMIN_CHAT_ID);
+}
+
+function setAdminMode(chatId, mode, data) {
+  adminState.set(String(chatId), { mode: mode || "", data: data || {} });
+}
+
+function getAdminMode(chatId) {
+  return adminState.get(String(chatId)) || { mode: "", data: {} };
+}
+
+async function sendAdminPanel(chatId) {
+  await tgSafeSendMessage(chatId, "🛠️ Panel Admin\nPilih menu:", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "📊 Dashboard", callback_data: "ADMIN_DASH" }],
+        [{ text: "🚫 Ban User", callback_data: "ADMIN_BAN" }, { text: "✅ Unban User", callback_data: "ADMIN_UNBAN" }],
+        [{ text: "📦 Set Stock", callback_data: "ADMIN_STOCK" }, { text: "💰 Set Harga", callback_data: "ADMIN_PRICE" }],
+        [{ text: "📣 Broadcast", callback_data: "ADMIN_BC" }],
+      ],
+    },
+  });
+}
+
+async function adminDashboard(chatId) {
+  const success = await read(TAB_TX_SUCCESS + "!A:G");
+  const fail = await read(TAB_TX_FAIL + "!A:G");
+  const sCount = Math.max(success.length, 0);
+  const fCount = Math.max(fail.length, 0);
+
+  await tgSafeSendMessage(chatId, "📊 Dashboard\n\n✅ Berhasil: " + (sCount) + "\n❌ Gagal: " + (fCount), {});
+}
+
+// format input admin: "KATEGORI | ID_PRODUK | NILAI"
+function parseAdminTriple(text) {
+  const parts = String(text || "").split("|").map(function (s) { return String(s).trim(); }).filter(Boolean);
+  if (parts.length < 3) return null;
+  return { cat: parts[0], id: parts[1], val: parts[2] };
+}
+
+async function adminSetStock(chatId, text) {
+  const t = parseAdminTriple(text);
+  if (!t) {
+    await tgSafeSendMessage(chatId, "Format salah.\nContoh:\nAPK NONTON | 1 | 10\n(untuk UNLIMITED tulis UNLIMITED)", {});
+    return;
+  }
+  const prods = await getProducts(t.cat);
+  const p = prods.find(function (x) { return String(x.id) === String(t.id); });
+  if (!p) {
+    await tgSafeSendMessage(chatId, "Produk tidak ditemukan di " + t.cat + " dengan ID " + t.id, {});
+    return;
+  }
+  await updateCell(p.tab + "!E" + p.rowIndex, String(t.val));
+  await tgSafeSendMessage(chatId, "✅ Stock diupdate: " + p.name + " = " + String(t.val), {});
+}
+
+async function adminSetPrice(chatId, text) {
+  const t = parseAdminTriple(text);
+  if (!t) {
+    await tgSafeSendMessage(chatId, "Format salah.\nContoh:\nAPK NONTON | 1 | 15000", {});
+    return;
+  }
+  const prods = await getProducts(t.cat);
+  const p = prods.find(function (x) { return String(x.id) === String(t.id); });
+  if (!p) {
+    await tgSafeSendMessage(chatId, "Produk tidak ditemukan di " + t.cat + " dengan ID " + t.id, {});
+    return;
+  }
+  await updateCell(p.tab + "!F" + p.rowIndex, String(t.val));
+  await tgSafeSendMessage(chatId, "✅ Harga diupdate: " + p.name + " = " + rupiah(t.val), {});
+}
+
+async function adminBan(chatId, text) {
+  const id = String(text || "").trim();
+  if (!id) {
+    await tgSafeSendMessage(chatId, "Kirim Chat ID yang mau diban.", {});
+    return;
+  }
+  await banUser(id, "Admin ban");
+  await tgSafeSendMessage(chatId, "✅ User diban: " + id, {});
+}
+
+async function adminUnban(chatId, text) {
+  const id = String(text || "").trim();
+  if (!id) {
+    await tgSafeSendMessage(chatId, "Kirim Chat ID yang mau di-unban.", {});
+    return;
+  }
+  await unbanUser(id);
+  await tgSafeSendMessage(chatId, "✅ User di-unban: " + id, {});
+}
+
+async function adminBroadcast(chatId, text) {
+  const msg = String(text || "").trim();
+  if (!msg) {
+    await tgSafeSendMessage(chatId, "Kirim teks broadcast-nya.", {});
+    return;
+  }
+
+  const members = await read(TAB_MEMBER + "!A:C");
+  let sent = 0;
+  for (let i = 0; i < members.length; i++) {
+    const r = members[i] || [];
+    const col = r[2] ? String(r[2]) : "";
+    // jika format @username, tidak ada chatId -> skip
+    // kalau angka -> gunakan
+    const n = Number(col.replace("@", "").trim());
+    if (!Number.isFinite(n)) continue;
+    await tgSafeSendMessage(String(n), "📣 Broadcast:\n\n" + msg, {});
+    sent += 1;
+  }
+
+  await tgSafeSendMessage(chatId, "✅ Broadcast dikirim ke " + sent + " member (yang punya chatId).", {});
+}
+
+/* ================= TELEGRAM WEBHOOK HANDLER ================= */
+async function handleUpdate(req, res) {
   try {
-    const msg = req.body.message;
-    const cb = req.body.callback_query;
+    const update = req.body || {};
+    const msg = update.message;
+    const cb = update.callback_query;
 
-    /* ========= CALLBACK ========= */
+    // ===== CALLBACKS =====
     if (cb) {
-      const chatId = cb.message?.chat?.id;
-      const data = cb.data || "";
+      const cbId = cb.id;
+      const chatId = String(cb.message && cb.message.chat && cb.message.chat.id ? cb.message.chat.id : "");
+      const data = String(cb.data || "");
 
-      if (!chatId) return;
+      // spam check (callback counted too)
+      const sp = recordSpam(chatId);
+      if (sp.tooMany) {
+        await tgAnswerCallback(cbId, "Terlalu cepat. Pelan-pelan ya.", false);
+        await maybeAutoBan(chatId, "AUTO BAN: SPAM CALLBACK");
+        return res.sendStatus(200);
+      }
 
       if (await isBanned(chatId)) {
-        await tgAnswerCallback(cb.id, "Kamu diblokir.", true);
-        return;
+        await tgAnswerCallback(cbId, "Kamu diblokir.", true);
+        return res.sendStatus(200);
       }
 
-      // Anti-spam callback: max 10 per 10s
-      const s = getSpam(chatId);
-      const violated = hitLimiter(s.cb, 10, 10_000);
-      if (violated) {
-        await warnOrBan(chatId, "Callback spam");
-        await tgAnswerCallback(cb.id, "Terlalu cepat. Tunggu sebentar.", false);
-        return;
-      }
-
-      if (data.startsWith("CAT_")) {
+      // CATEGORY
+      if (data.indexOf("CAT_") === 0) {
         const cat = data.replace("CAT_", "");
-        await showProducts(chatId, cat);
-        await tgAnswerCallback(cb.id, "OK", false);
-        return;
+        await tgAnswerCallback(cbId, "Membuka " + cat, false);
+        await sendProductList(chatId, cat);
+        return res.sendStatus(200);
       }
 
-      if (data.startsWith("BUY_")) {
+      // BUY
+      if (data.indexOf("BUY_") === 0) {
         const parts = data.split("_");
         const cat = parts[1];
         const id = parts[2];
 
-        const products = await getProductsCached(cat);
-        const product = products.find((p) => String(p.id) === String(id));
+        const prods = await getProducts(cat);
+        const product = prods.find(function (p) { return String(p.id) === String(id); });
+
         if (!product) {
-          await tgAnswerCallback(cb.id, "Produk tidak ditemukan.", true);
-          return;
+          await tgAnswerCallback(cbId, "Produk tidak ditemukan.", true);
+          return res.sendStatus(200);
         }
 
-        // Stock check before creating invoice
-        if (String(product.stock).toUpperCase() !== "UNLIMITED") {
-          const current = Number(product.stock || 0);
-          if (current <= 0) {
-            await tgAnswerCallback(cb.id, "Stok habis.", true);
-            await tgSafeSendMessage(chatId, "⚠️ Stok produk ini sedang habis.");
-            return;
-          }
+        // check stok
+        if (isOutOfStock(product.stock)) {
+          await tgAnswerCallback(cbId, "Stok habis.", true);
+          await tgSafeSendMessage(chatId, "❌ Stok produk habis.", {});
+          return res.sendStatus(200);
         }
 
-        const invoice = await createTransaction(product, chatId, cb.from?.username);
+        const invoice = await createTransaction(product, chatId, cb.from && cb.from.username ? cb.from.username : "");
+        await tgAnswerCallback(cbId, "Invoice dibuat. Mengambil QRIS...", false);
         await sendQRIS(chatId, product, invoice);
-        await tgAnswerCallback(cb.id, "Silakan bayar QRIS.", false);
-        return;
+        return res.sendStatus(200);
       }
 
-      if (data.startsWith("CEK_")) {
+      // CEK
+      if (data.indexOf("CEK_") === 0) {
         const invoice = data.replace("CEK_", "");
+        await tgAnswerCallback(cbId, "Mengecek...", false);
         await checkAndDeliver(chatId, invoice);
-        await tgAnswerCallback(cb.id, "Dicek.", false);
-        return;
+        return res.sendStatus(200);
       }
 
-      await tgAnswerCallback(cb.id, "OK", false);
-      return;
+      // ADMIN CALLBACKS
+      if (data === "ADMIN_DASH" && isAdminChat(chatId)) {
+        await tgAnswerCallback(cbId, "Dashboard", false);
+        await adminDashboard(chatId);
+        return res.sendStatus(200);
+      }
+      if (data === "ADMIN_BAN" && isAdminChat(chatId)) {
+        setAdminMode(chatId, "BAN", {});
+        await tgAnswerCallback(cbId, "Kirim Chat ID yang mau diban", true);
+        await tgSafeSendMessage(chatId, "Kirim Chat ID yang mau diban (contoh: 123456789).", {});
+        return res.sendStatus(200);
+      }
+      if (data === "ADMIN_UNBAN" && isAdminChat(chatId)) {
+        setAdminMode(chatId, "UNBAN", {});
+        await tgAnswerCallback(cbId, "Kirim Chat ID yang mau di-unban", true);
+        await tgSafeSendMessage(chatId, "Kirim Chat ID yang mau di-unban (contoh: 123456789).", {});
+        return res.sendStatus(200);
+      }
+      if (data === "ADMIN_STOCK" && isAdminChat(chatId)) {
+        setAdminMode(chatId, "STOCK", {});
+        await tgAnswerCallback(cbId, "Kirim: KATEGORI | ID | STOCK", true);
+        await tgSafeSendMessage(chatId, "Format:\nKATEGORI | ID_PRODUK | STOCK\nContoh:\nAPK NONTON | 1 | 10\natau:\nAPK NONTON | 1 | UNLIMITED", {});
+        return res.sendStatus(200);
+      }
+      if (data === "ADMIN_PRICE" && isAdminChat(chatId)) {
+        setAdminMode(chatId, "PRICE", {});
+        await tgAnswerCallback(cbId, "Kirim: KATEGORI | ID | HARGA", true);
+        await tgSafeSendMessage(chatId, "Format:\nKATEGORI | ID_PRODUK | HARGA\nContoh:\nAPK NONTON | 1 | 15000", {});
+        return res.sendStatus(200);
+      }
+      if (data === "ADMIN_BC" && isAdminChat(chatId)) {
+        setAdminMode(chatId, "BC", {});
+        await tgAnswerCallback(cbId, "Kirim teks broadcast", true);
+        await tgSafeSendMessage(chatId, "Kirim teks broadcast yang mau dikirim ke member.", {});
+        return res.sendStatus(200);
+      }
+
+      return res.sendStatus(200);
     }
 
-    /* ========= MESSAGE ========= */
-    if (!msg) return;
+    // ===== MESSAGE =====
+    if (!msg) return res.sendStatus(200);
 
-    const chatId = msg.chat?.id;
-    const text = msg.text || "";
-    const username = msg.from?.username;
+    const chatId = String(msg.chat && msg.chat.id ? msg.chat.id : "");
+    const text = msg.text ? String(msg.text) : "";
+    const username = msg.from && msg.from.username ? msg.from.username : "";
 
-    if (!chatId) return;
+    // anti spam
+    const sp = recordSpam(chatId);
+    if (sp.tooMany) {
+      // warning jarang2
+      const st = spamState.get(spamKey(chatId));
+      const now = Date.now();
+      if (st && (!st.lastWarnAt || now - st.lastWarnAt > 6000)) {
+        st.lastWarnAt = now;
+        spamState.set(spamKey(chatId), st);
+        await tgSafeSendMessage(chatId, "⚠️ Terlalu cepat. Pelan-pelan ya.", {});
+      }
+      await maybeAutoBan(chatId, "AUTO BAN: SPAM MESSAGE");
+      return res.sendStatus(200);
+    }
 
     if (await isBanned(chatId)) {
-      await tgSafeSendMessage(chatId, "❌ Kamu diblokir.");
-      return;
+      await tgSafeSendMessage(chatId, "❌ Kamu diblokir.", {});
+      return res.sendStatus(200);
     }
 
-    // Anti-spam message: max 6 per 10s
-    const s = getSpam(chatId);
-    const violated = hitLimiter(s.msg, 6, 10_000);
-    if (violated) {
-      await warnOrBan(chatId, "Message spam");
-      return;
+    const admin = isAdminChat(chatId);
+
+    // jika admin sedang mode input
+    if (admin) {
+      const st = getAdminMode(chatId);
+      if (st.mode === "BAN") {
+        setAdminMode(chatId, "", {});
+        await adminBan(chatId, text);
+        return res.sendStatus(200);
+      }
+      if (st.mode === "UNBAN") {
+        setAdminMode(chatId, "", {});
+        await adminUnban(chatId, text);
+        return res.sendStatus(200);
+      }
+      if (st.mode === "STOCK") {
+        setAdminMode(chatId, "", {});
+        await adminSetStock(chatId, text);
+        return res.sendStatus(200);
+      }
+      if (st.mode === "PRICE") {
+        setAdminMode(chatId, "", {});
+        await adminSetPrice(chatId, text);
+        return res.sendStatus(200);
+      }
+      if (st.mode === "BC") {
+        setAdminMode(chatId, "", {});
+        await adminBroadcast(chatId, text);
+        return res.sendStatus(200);
+      }
     }
 
-    const isAdmin = String(chatId) === String(ADMIN_CHAT_ID);
-
-    // /start
+    // commands / start
     if (text === "/start") {
       await addMember(chatId, username);
-
-      await tgSafeSendMessage(
-        chatId,
-        "Selamat datang 👋\nGunakan menu di bawah untuk mulai.",
-        { reply_markup: mainMenuKeyboard(isAdmin) }
-      );
-
-      // Immediately show categories as well
-      await showCategories(chatId, isAdmin);
-      return;
+      await tgSafeSendMessage(chatId, "Selamat datang 👋\nGunakan menu di bawah.", {
+        reply_markup: mainMenuKeyboard(admin),
+      });
+      return res.sendStatus(200);
     }
 
-    // Menu: Kategori
-    if (text === "📁 Kategori") {
-      await showCategories(chatId, isAdmin);
-      return;
+    // menu buttons
+    if (text === "📍 Ping") {
+      await tgSafeSendMessage(chatId, "✅ Pong!", { reply_markup: mainMenuKeyboard(admin) });
+      return res.sendStatus(200);
     }
 
-    // Menu: Cek Pesanan
-    if (text === "📄 Cek Pesanan") {
-      const last = await getLastOrderForChat(chatId);
-      if (!last) {
-        await tgSafeSendMessage(chatId, "Belum ada transaksi untuk akun kamu.");
-        return;
-      }
-      const row = last.row;
-      await tgSafeSendMessage(
-        chatId,
-        `📄 Pesanan Terakhir:\n\n` +
-          `🧾 Invoice: ${row[4]}\n` +
-          `📦 Produk: ${row[2]}\n` +
-          `💰 Harga: ${rupiah(row[5])}\n` +
-          `📌 Status: ${row[6]}\n\n` +
-          `Klik tombol di bawah untuk cek status pembayaran.`,
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: "🔄 Cek Status", callback_data: `CEK_${row[4]}` }]],
-          },
-        }
-      );
-      return;
+    if (text === "🗂️ Kategori") {
+      await sendCategoryList(chatId);
+      return res.sendStatus(200);
     }
 
-    // Menu: Cara Order
+    if (text === "🧾 Cek Pesanan") {
+      await listMyPending(chatId);
+      return res.sendStatus(200);
+    }
+
     if (text === "📌 Cara Order") {
-      await tgSafeSendMessage(
-        chatId,
-        `📌 Cara Order:\n\n` +
-          `1) Klik 📁 Kategori\n` +
-          `2) Pilih produk yang ingin dibeli\n` +
-          `3) Scan QRIS dan lakukan pembayaran\n` +
-          `4) Setelah pembayaran sukses, bot otomatis kirim link produk\n\n` +
-          `Jika ada kendala, klik 🆘 Bantuan.`
-      );
-      return;
+      const how =
+        "📌 Cara Order:\n\n" +
+        "1) Klik 🗂️ Kategori\n" +
+        "2) Pilih produk\n" +
+        "3) Scan QRIS\n" +
+        "4) Setelah bayar, klik 🔄 Cek Status\n\n" +
+        "Jika sudah COMPLETED, bot kirim link otomatis.";
+      await tgSafeSendMessage(chatId, how, { reply_markup: mainMenuKeyboard(admin) });
+      return res.sendStatus(200);
     }
 
-    // Menu: Bantuan
     if (text === "🆘 Bantuan") {
-      await tgSafeSendMessage(
-        chatId,
-        `🆘 Bantuan:\n\n` +
-          `• Jika bot belum kirim produk setelah bayar, klik 📄 Cek Pesanan lalu 🔄 Cek Status.\n` +
-          `• Pastikan pembayaran QRIS sukses.\n` +
-          `• Jika masih gagal, kirim invoice ke admin.\n\n` +
-          `Admin: ${ADMIN_CHAT_ID}`
-      );
-      return;
+      const help =
+        "🆘 Bantuan:\n\n" +
+        "- Jika sudah bayar tapi belum dapat produk:\n" +
+        "  gunakan 🧾 Cek Pesanan lalu klik Cek Status.\n\n" +
+        "- Jika error, hubungi admin.";
+      await tgSafeSendMessage(chatId, help, { reply_markup: mainMenuKeyboard(admin) });
+      return res.sendStatus(200);
     }
 
-    // Menu: Ping
-    if (text === "🏓 Ping") {
-      await tgSafeSendMessage(chatId, "Pong ✅ Bot aktif.");
-      return;
+    if (text === "🛠️ Panel Admin" && admin) {
+      await sendAdminPanel(chatId);
+      return res.sendStatus(200);
     }
 
-    // Admin panel
-    if (text === "🧑‍💻 Panel Admin" && isAdmin) {
-      await tgSafeSendMessage(
-        chatId,
-        `🧑‍💻 Panel Admin:\n\n` +
-          `• /dashboard\n` +
-          `• /ban <chat_id>\n` +
-          `• /unban <chat_id>\n\n` +
-          `Catatan: Kelola produk langsung di Google Sheet.`
-      );
-      return;
+    // fallback: jika user kirim invoice manual
+    if (text.indexOf("INV-") === 0 || text.indexOf("TX") === 0) {
+      await checkAndDeliver(chatId, text.trim());
+      return res.sendStatus(200);
     }
 
-    // Admin commands
-    if (isAdmin) {
-      if (text.startsWith("/ban ")) {
-        const id = text.split(" ")[1];
-        await banUser(id, "Admin ban");
-        await tgSafeSendMessage(chatId, "User diban.");
-        return;
-      }
+    // default show menu
+    await tgSafeSendMessage(chatId, "Pilih menu ya 🙂", { reply_markup: mainMenuKeyboard(admin) });
+    return res.sendStatus(200);
 
-      if (text.startsWith("/unban ")) {
-        const id = text.split(" ")[1];
-        await unbanUser(id);
-        await tgSafeSendMessage(chatId, "User di-unban.");
-        return;
-      }
-
-      if (text === "/dashboard") {
-        const success = await read(`${TAB_TX_SUCCESS}!A:G`);
-        const fail = await read(`${TAB_TX_FAIL}!A:G`);
-        await tgSafeSendMessage(
-          chatId,
-          `📊 Dashboard\n\n✅ Berhasil: ${Math.max(success.length - 1, 0)}\n❌ Gagal: ${Math.max(fail.length - 1, 0)}`
-        );
-        return;
-      }
-    }
-
-    // Default
-    await tgSafeSendMessage(
-      chatId,
-      "Gunakan menu di bawah ya 👇",
-      { reply_markup: mainMenuKeyboard(isAdmin) }
-    );
   } catch (err) {
-    console.log("TELEGRAM HANDLER ERROR:", err?.message);
+    console.log("ERROR:", err && err.message ? err.message : err);
+    return res.sendStatus(200);
   }
-});
+}
+
+/* ================= ROUTES ================= */
+// Telegram webhook (secret path)
+app.post("/telegram/webhook/" + WEBHOOK_SECRET, handleUpdate);
+
+// Optional: fallback root webhook
+app.post("/", handleUpdate);
+
+// Health
+app.get("/", function (req, res) { res.send("BOT RUNNING"); });
 
 /* ================= SERVER ================= */
-app.get("/", (req, res) => res.send("BOT RUNNING"));
-
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server started");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, function () {
+  console.log("Server started on port", PORT);
 });
-```
