@@ -171,7 +171,7 @@ function normalizeStatus(s) {
 
 function rupiah(n) {
   const num = Number(n || 0);
-  return `Rp ${num.toLocaleString("id-ID")}`;
+  return "Rp " + num.toLocaleString("id-ID");
 }
 
 /* ================= REPLY KEYBOARD MENU ================= */
