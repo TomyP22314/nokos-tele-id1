@@ -584,7 +584,11 @@ async function handleUpdate(update) {
   if (text === "/start") {
     await addMember(chatId, username);
 
-    const totalMember = await countMembers();
+    let totalMember = await countMembers();
+
+if (totalMember < 50) {
+  totalMember = marketingMemberFallback();
+}
     let totalSuccess = await countSuccessTx();
 
 if (totalSuccess < 20) {
