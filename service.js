@@ -165,6 +165,15 @@ function getRandomTestimoni() {
   ];
   return list[Math.floor(Math.random() * list.length)];
 }
+function marketingSuccessFallback() {
+  // Bikin angka naik berdasarkan hari
+  const base = 150; // angka minimal
+  const days = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+  const growth = days % 300; // biar keliatan naik
+  const randomBoost = Math.floor(Math.random() * 20); // variasi kecil
+
+  return base + growth + randomBoost;
+}
 
 function mainMenuKeyboard(isAdmin) {
   const base = [
@@ -576,7 +585,11 @@ async function handleUpdate(update) {
     await addMember(chatId, username);
 
     const totalMember = await countMembers();
-    const totalSuccess = await countSuccessTx();
+    let totalSuccess = await countSuccessTx();
+
+if (totalSuccess < 20) {
+  totalSuccess = marketingSuccessFallback();
+}
     const testimoni = getRandomTestimoni();
 
     const welcome =
