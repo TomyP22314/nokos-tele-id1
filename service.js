@@ -55,7 +55,9 @@ const TAB_BANNED = "BANNED";
 
 /* ================= TELEGRAM ================= */
 async function tg(method, body) {
-const res = await fetch(https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {    method: "POST",
+  const url = "https://api.telegram.org/bot" + BOT_TOKEN + "/" + method;
+  const res = await fetch(url, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -85,9 +87,7 @@ async function tgAnswerCallback(cbId, text, showAlert = false) {
       text,
       show_alert: showAlert,
     });
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 }
 
 /* ================= GOOGLE ================= */
