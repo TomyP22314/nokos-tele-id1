@@ -165,6 +165,18 @@ function getRandomTestimoni() {
   ];
   return list[Math.floor(Math.random() * list.length)];
 }
+
+function getRandomAds() {
+  const adsList = [
+    "🏠 Cari NoKos Tele 👉 <a href=\"https://t.me/gomstele24jam_bot\">@gomstele24jam_bot</a>",
+    "🔥 Butuh akun UBOT? Gas 👉 <a href=\"https://t.me/gomstele24jam_bot\">Beli Disini</a>",
+    "💎 Join Channel NoKos Premium 👉 <a href=\"https://t.me/gomstele24jam_bot\">Klik Masuk</a>",
+    "🚀 Auto Order NoKos 24 Jam 👉 <a href=\"https://t.me/gomstele24jam_bot\">Langsung Chat</a>"
+  ];
+
+  return adsList[Math.floor(Math.random() * adsList.length)];
+}
+
 function marketingMemberFallback() {
   const base = 120; // angka minimal member palsu biar “jualan keras”
   const days = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
@@ -601,18 +613,22 @@ if (totalSuccess < 20) {
   totalSuccess = marketingSuccessFallback();
 }
     const testimoni = getRandomTestimoni();
+    const randomAds = getRandomAds();
 
-    const welcome =
-      `🎉 <b>WELCOME TO GOMS APK MOD</b> 🎉\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📲 <b>APK KHUSUS ANDROID</b>\n` +
-      `⚡ <b>Auto kirim</b> • Cepat • Aman\n\n` +
-      `📊 <b>STATISTIK TOKO</b>\n` +
-      `👥 Member: <b>${totalMember}</b>\n` +
-      `✅ Transaksi Sukses: <b>${totalSuccess}</b>\n\n` +
-      `💬 <b>Testimoni Pembeli</b>\n` +
-      `${testimoni}\n\n` +
-      `📌 <b>PILIH KATEGORI DI MENU</b> 👇`;
+const welcome =
+  `🎉 <b>WELCOME TO GOMS APK MOD</b> 🎉\n` +
+  `━━━━━━━━━━━━━━━━━━━━\n` +
+  `📱 <b>APK KHUSUS ANDROID</b>\n` +
+  `⚡ <b>Auto kirim</b> • Cepat • Aman\n\n` +
+  `📊 <b>STATISTIK TOKO</b>\n` +
+  `👥 Member: <b>${totalMember}</b>\n` +
+  `✅ Transaksi Sukses: <b>${totalSuccess}</b>\n\n` +
+  `💬 <b>Testimoni Pembeli</b>\n` +
+  `${testimoni}\n\n` +
+"📌 <b>PILIH KATEGORI DI MENU</b> 👇\n" +
+"━━━━━━━━━━━━━━━━━━━━\n" +
+"📣 <b>IKLAN SPONSOR</b>\n" +
+randomAds;
 
     await tgSendMessage(chatId, welcome, {
       reply_markup: mainMenuKeyboard(isAdmin),
