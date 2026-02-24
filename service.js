@@ -668,10 +668,11 @@ async function handleUpdate(req, res) {
   const testimoni = getRandomTestimoni();
 
   const welcome =
-    "🚨 GOMS APK MOD RESMI 🚨\n\n" +
-    "🔥 APK MOD & PREMIUM TERLENGKAP!\n" +
-    "⚡ Auto kirim • Cepat • Aman\n\n" +
-    "📊 Statistik Kami:\n" +
+    "🚨 GOMS APK MOD🚨\n\n" +
+    "📲APK KHUSUS ANDROID\n"
+    "🔥 APK MOD & PREMIUM TERLENGKAP\n\n" +
+    "⚡ Auto kirim • Cepat • Aman\n" +
+    "📊 Statistik Kami:\n\n" +
     "👥 Member: " + totalMember + "\n" +
     "✅ Transaksi Sukses: " + totalSuccess + "\n\n" +
     "💬 Testimoni Pembeli:\n" +
