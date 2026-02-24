@@ -21,7 +21,6 @@ if (!SA_JSON) {
   console.error("Missing ENV: GOOGLE_SERVICE_ACCOUNT_JSON");
   process.exit(1);
 }
-}
 
 for (const k of REQUIRED_ENVS) {
   if (!process.env[k]) {
