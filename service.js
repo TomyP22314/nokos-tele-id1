@@ -669,7 +669,7 @@ async function handleUpdate(req, res) {
 
   const welcome =
     "🚨 GOMS APK MOD🚨\n\n" +
-    "📲APK KHUSUS ANDROID\n"
+    "📲 APK KHUSUS ANDROID\n"
     "🔥 APK MOD & PREMIUM TERLENGKAP\n\n" +
     "⚡ Auto kirim • Cepat • Aman\n" +
     "📊 Statistik Kami:\n\n" +
