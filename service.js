@@ -857,12 +857,12 @@ const welcome =
   `📊 <b>STATISTIK TOKO</b>\n` +
   `👥 Member: <b>${totalMember}</b>\n` +
   `✅ Transaksi Sukses: <b>${totalSuccess}</b>\n\n` +
-  `'💬 <b>Testimoni Pembeli</b>\n' +
-'<pre>' + testimoni + '</pre>\n\n' +
-"📌 <b>PILIH KATEGORI DI MENU</b> 👇\n" +
-"━━━━━━━━━━━━━━━━━━━━\n" +
-"📣 <b>IKLAN SPONSOR</b>\n" +
-randomAds;
+  `💬 <b>Testimoni Pembeli</b>\n` +
+  `<pre>${testimoni}</pre>\n\n` +
+  `📌 <b>PILIH KATEGORI DI MENU</b> 👇\n` +
+  `━━━━━━━━━━━━━━━━━━━━\n` +
+  `📣 <b>IKLAN SPONSOR</b>\n` +
+  `${randomAds}`;
 
     await tgSendMessage(chatId, welcome, {
       reply_markup: mainMenuKeyboard(isAdmin),
