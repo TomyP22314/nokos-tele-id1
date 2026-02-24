@@ -688,7 +688,7 @@ if (text === "/start") {
 
   const isAdmin = String(chatId) === String(ADMIN_CHAT_ID);
 
-  await tgSafeSendMessage(chatId, welcome, {
+  await tgSendMessage(chatId, welcome, {
     reply_markup: mainMenuKeyboard(isAdmin)
   });
 
