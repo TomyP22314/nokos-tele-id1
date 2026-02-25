@@ -877,35 +877,49 @@ async function handleUpdate(update) {
       return;
     }
 
-    // CANCEL
-    if (data.startsWith("CANCEL_")) {
-      const invoice = data.replace("CANCEL_", "");
-      await tgAnswerCallback(cb.id, "Membatalkan transaksi...", false);
+// CANCEL TRANSAKSI
+if (data.startsWith("CANCEL_")) {
+  const invoice = data.replace("CANCEL_", "");
 
-      const tx = await findTransaction(invoice);
-      if (!tx) {
-        await tgAnswerCallback(cb.id, "Transaksi tidak ditemukan.", true);
-        return;
-      }
+  await tgAnswerCallback(cb.id, "Membatalkan transaksi...", false);
 
-      await updateCell(`${TAB_TX}!G${tx.rowIndex}`, "CANCELLED");
-
-      await tgEditMessage(
-        chatId,
-        messageId,
-        "❌ <b>Transaksi dibatalkan.</b>\n\nSilakan kembali ke menu.",
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: "🏠 Home", callback_data: "NAV_HOME" }]],
-          },
-        }
-      );
-      return;
-    }
-
-    await tgAnswerCallback(cb.id, "OK", false);
+  const tx = await findTransaction(invoice);
+  if (!tx) {
+    await tgAnswerCallback(cb.id, "Transaksi tidak ditemukan.", true);
     return;
   }
+
+  // ambil QR msg id yang tersimpan di kolom H
+  const row = tx.data;
+  const qrMsgId = row?.[7]; // H
+
+  // 1) hapus pesan QR yang sedang diklik (ini paling pasti)
+  // (kalau mau, bisa juga delete berdasarkan qrMsgId)
+  try {
+    await tgDeleteMessage(chatId, cb.message.message_id);
+  } catch {}
+
+  // 2) update sheet: status CANCELLED + kosongkan QR_MSG_ID
+  await updateCell(`${TAB_TX}!G${tx.rowIndex}`, "CANCELLED");
+  await updateCell(`${TAB_TX}!H${tx.rowIndex}`, "");
+
+  // 3) opsional: pindahin ke sheet gagal biar rapi
+  // (kalau kamu mau transaksi cancel masuk TRANSAKSI GAGAL)
+  try {
+    const copyRow = [...row];
+    copyRow[6] = "CANCELLED";
+    await append(`${TAB_TX_FAIL}!A:G`, copyRow.slice(0, 7));
+    await clearRow(TAB_TX, tx.rowIndex, "H"); // hapus 1 baris transaksi
+  } catch (e) {
+    // kalau gagal pindah, gapapa—yang penting status sudah CANCELLED
+  }
+
+  // 4) kirim menu utama lagi (biar user nggak bingung)
+  const welcome = await buildWelcomeText(chatId);
+  await renderMain(chatId, welcome, mainMenuInline(isAdmin));
+
+  return;
+}
 
   /* -------- MESSAGE -------- */
   if (!msg) return;
