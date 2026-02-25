@@ -665,6 +665,80 @@ async function showProducts(chatId, cat, messageId, page = 1) {
     { reply_markup: { inline_keyboard: keyboard } }
   );
 }
+
+// ================== MAIN PAGE (1 pesan, selalu di-edit) ==================
+const MAIN_MSG = new Map(); // chatId(string) -> message_id(number)
+
+function getMainMsgId(chatId) {
+  return MAIN_MSG.get(String(chatId)) || null;
+}
+
+function setMainMsgId(chatId, messageId) {
+  if (!chatId || !messageId) return;
+  MAIN_MSG.set(String(chatId), Number(messageId));
+}
+
+// Render / ganti "halaman utama" dengan editMessage kalau bisa,
+// kalau belum ada messageId (pertama kali), kirim baru lalu simpan id-nya.
+async function renderMain(chatId, text, replyMarkup) {
+  const mid = getMainMsgId(chatId);
+
+  // kalau sudah ada main message -> edit biar gak numpuk
+  if (mid) {
+    try {
+      await tgEditMessage(chatId, mid, text, {
+        reply_markup: replyMarkup,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      });
+      return mid;
+    } catch (e) {
+      // kalau message lama hilang/invalid, fallback kirim baru
+      // (contoh: "message to edit not found")
+    }
+  }
+
+  // belum ada -> send baru, simpan message_id
+  const sent = await tgSendMessage(chatId, text, {
+    reply_markup: replyMarkup,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+
+  // sesuaikan bentuk return tgSendMessage kamu:
+  // kadang sent.message_id, kadang sent.result.message_id
+  const newId =
+    sent?.message_id ||
+    sent?.result?.message_id ||
+    sent?.result?.message?.message_id;
+
+  if (newId) setMainMsgId(chatId, newId);
+  return newId;
+}
+  function mainMenuInline(isAdmin) {
+  const rows = [
+    [
+      { text: "📦 Kategori", callback_data: "NAV_CAT" },
+      { text: "🧾 Cek Pesanan", callback_data: "NAV_CEK" }
+    ],
+    [
+      { text: "📌 Cara Order", callback_data: "NAV_ORDER" },
+      { text: "🆘 Bantuan", callback_data: "NAV_HELP" }
+    ],
+    [
+      { text: "📍 Ping", callback_data: "NAV_PING" }
+    ]
+  ];
+
+  if (isAdmin) {
+    rows.push([{ text: "🛠 Panel Admin", callback_data: "NAV_ADMIN" }]);
+  }
+
+  return {
+    inline_keyboard: rows
+  };
+  }
+}
 /* ================= UPDATE HANDLER ================= */
 async function handleUpdate(update) {
   const msg = update.message;
@@ -702,6 +776,87 @@ const isAdmin =
       return;
     }
 
+// NAV (menu utama via inline keyboard)
+if (data.startsWith("NAV_")) {
+  await tgAnswerCallback(cb.id, "OK", false);
+
+  if (data === "NAV_CAT") {
+    await showCategoriesEdit(chatId, cb.message.message_id);
+    return;
+  }
+
+  if (data === "NAV_CEK") {
+    const txt =
+      "🧾 <b>Cek Pesanan</b>\n" +
+      "Kirim invoice kamu (contoh: <code>TX1700000000abcd</code>)\n" +
+      "Nanti aku cek statusnya.";
+    await tgEditMessage(chatId, cb.message.message_id, txt, {
+      reply_markup: mainMenuInline(isAdmin),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    return;
+  }
+
+  if (data === "NAV_ORDER") {
+    const txt =
+      "📌 <b>CARA ORDER</b>\n" +
+      "1) Klik <b>📦 Kategori</b>\n" +
+      "2) Pilih produk\n" +
+      "3) Scan QRIS & bayar\n" +
+      "4) Klik <b>🔄 Cek Status</b>\n\n" +
+      "✅ Setelah sukses, link otomatis dikirim.";
+    await tgEditMessage(chatId, cb.message.message_id, txt, {
+      reply_markup: mainMenuInline(isAdmin),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    return;
+  }
+
+  if (data === "NAV_HELP") {
+    const txt =
+      "🆘 <b>BANTUAN</b>\n\n" +
+      "Kalau QRIS belum muncul, tunggu 10-30 detik lalu coba lagi.\n" +
+      "Kalau sudah bayar tapi belum terkirim, klik <b>🔄 Cek Status</b>.\n\n" +
+      'Admin: <a href="https://t.me/hellogoms">@hellogoms</a>';
+    await tgEditMessage(chatId, cb.message.message_id, txt, {
+      reply_markup: mainMenuInline(isAdmin),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    return;
+  }
+
+  if (data === "NAV_PING") {
+    await tgEditMessage(chatId, cb.message.message_id, "✅ Pong! Bot aktif & siap jualan 🔥", {
+      reply_markup: mainMenuInline(isAdmin),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    return;
+  }
+
+  if (data === "NAV_ADMIN") {
+    // nanti kita isi step admin panel
+    await tgEditMessage(chatId, cb.message.message_id, "🛠 <b>Panel Admin</b>", {
+      reply_markup: mainMenuInline(isAdmin),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    return;
+  }
+
+  if (data === "NAV_PING") {
+  const txt = "✅ Pong! Bot aktif & siap jualan 🔥";
+  await tgEditMessage(chatId, cb.message.message_id, txt, {
+    reply_markup: mainMenuInline(isAdmin),
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+  return;
+  }
+    
     // CAT
     if (data.startsWith("CAT_")) {
       const cat = data.replace("CAT_", "");
@@ -731,7 +886,7 @@ if (data.startsWith("CANCEL_")) {
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🏠 Home", callback_data: "HOME" }]
+          [{ text: "🏠 Home", callback_data: "NAV_HOME" }]
         ]
       }
     }
@@ -759,14 +914,9 @@ if (data === "BACK_CAT") {
 }
 
 // tombol home
-if (data === "HOME") {
+if (data === "NAV_HOME") {
   await tgAnswerCallback(cb.id, "Kembali ke menu...", false);
-  await tgEditMessage(
-    chatId,
-    cb.message.message_id,
-    "🏠 <b>Menu Utama</b>\nPilih:",
-    { reply_markup: mainMenuKeyboard(isAdmin) }
-  );
+  await renderMain(chatId, welcomeText, mainMenuInline(isAdmin));
   return;
 }
 
@@ -832,88 +982,39 @@ if (data === "NOOP") {
     return;
   }
 
-  // /start
-  if (text === "/start") {
-    await addMember(chatId, username);
+  // /start (render main page, 1 pesan aja selalu di-edit)
+if (text === "/start") {
+  await addMember(chatId, username);
 
-    let totalMember = await countMembers();
+  let totalMember = await countMembers();
+  if (totalMember < 50) totalMember = marketingMemberFallback();
 
-if (totalMember < 50) {
-  totalMember = marketingMemberFallback();
-}
-    let totalSuccess = await countSuccessTx();
+  let totalSuccess = await countSuccessTx();
+  if (totalSuccess < 20) totalSuccess = marketingSuccessFallback();
 
-if (totalSuccess < 20) {
-  totalSuccess = marketingSuccessFallback();
-}
-    const testimoni = getRandomTestimoni();
-    const randomAds = getRandomAds();
+  const testimoni = getRandomTestimoni();
+  const randomAds = getRandomAds();
 
-const welcome =
-  `🎉 <b>WELCOME TO GOMS APK MOD</b> 🎉\n` +
-  `━━━━━━━━━━━━━━━━━━━━\n` +
-  `📱 <b>APK KHUSUS ANDROID</b>\n` +
-  `⚡ <b>Auto kirim</b> • Cepat • Aman\n\n` +
-  `📊 <b>STATISTIK TOKO</b>\n` +
-  `👥 Member: <b>${totalMember}</b>\n` +
-  `✅ Transaksi Sukses: <b>${totalSuccess}</b>\n\n` +
-  `💬 <b>Testimoni Pembeli</b>\n` +
-  `<pre>${testimoni}</pre>\n\n` +
-  `📌 <b>PILIH KATEGORI DI MENU</b> 👇\n` +
-  `━━━━━━━━━━━━━━━━━━━━\n` +
-  `📣 <b>IKLAN SPONSOR</b>\n` +
-  `${randomAds}`;
+  const welcome =
+    `🎉 <b>WELCOME TO GOMS APK MOD</b> 🎉\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📱 <b>APK KHUSUS ANDROID</b>\n` +
+    `⚡ <b>Auto kirim</b> • Cepat • Aman\n\n` +
+    `📊 <b>STATISTIK TOKO</b>\n` +
+    `👥 Member: <b>${totalMember}</b>\n` +
+    `✅ Transaksi Sukses: <b>${totalSuccess}</b>\n\n` +
+    `💬 <b>Testimoni Pembeli</b>\n` +
+    `<pre>${testimoni}</pre>\n\n` +
+    `📌 <b>PILIH MENU</b> 👇\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📣 <b>IKLAN SPONSOR</b>\n` +
+    `${randomAds}`;
 
-    await tgSendMessage(chatId, welcome, {
-      reply_markup: mainMenuKeyboard(isAdmin),
-    });
-    return;
-  }
-
-  // menu text buttons
-  if (text === "📦 Kategori") {
-    await showCategories(chatId);
-    return;
-  }
-
-  if (text === "📍 Ping") {
-    await tgSendMessage(chatId, "✅ Pong! Bot aktif & siap jualan 🔥");
-    return;
-  }
-
-  if (text === "📌 Cara Order") {
-    await tgSendMessage(
-      chatId,
-      `📌 <b>CARA ORDER</b>\n` +
-        `1) Klik <b>📦 Kategori</b>\n` +
-        `2) Pilih produk\n` +
-        `3) Scan QRIS & bayar\n` +
-        `4) Klik <b>🔄 Cek Status</b>\n\n` +
-        `✅ Setelah sukses, link otomatis dikirim.`
-    );
-    return;
-  }
-
-if (text === "🆘 Bantuan") {
-  await tgSendMessage(
-    chatId,
-    "🆘 <b>BANTUAN</b>\n\n" +
-    "Kalau QRIS belum muncul, tunggu 10-30 detik lalu coba lagi.\n" +
-    "Kalau sudah bayar tapi belum terkirim, klik <b>🔄 Cek Status</b>.\n\n" +
-    'Admin: <a href="https://t.me/hellogoms">@hellogoms</a>'
-  );
+  // IMPORTANT: pakai renderMain, jangan tgSendMessage
+  await renderMain(chatId, welcome, mainMenuInline(isAdmin));
   return;
 }
 
-  if (text === "🧾 Cek Pesanan") {
-    await tgSendMessage(
-      chatId,
-      `🧾 <b>Cek Pesanan</b>\n` +
-        `Kirim invoice kamu (contoh: <code>TX1700000000abcd</code>)\n` +
-        `Nanti aku cek statusnya.`
-    );
-    return;
-  }
 
   // if user sends invoice manually
   if (/^TX\d+[a-f0-9]{4}$/i.test(text)) {
