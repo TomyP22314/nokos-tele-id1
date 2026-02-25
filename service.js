@@ -549,21 +549,53 @@ function buildWelcomeText() {
 /* ================= PAGES (kategori / produk) ================= */
 async function showCategoriesEdit(chatId, messageId) {
   const categories = await getCategories();
+
   if (!categories.length) {
-    await tgEditMessage(chatId, messageId, "⚠️ Kategori kosong. Isi di tab <b>CATEGORIES</b> kolom A.", {
-      reply_markup: { inline_keyboard: [[{ text: "🏠 Home", callback_data: "NAV_HOME" }]] },
-    });
+    await tgEditMessage(
+      chatId,
+      messageId,
+      "⚠️ <b>Kategori belum tersedia.</b>",
+      {
+        parse_mode: "HTML",
+        reply_markup: {
+          inline_keyboard: [[{ text: "🏠 Home", callback_data: "NAV_HOME" }]],
+        },
+      }
+    );
     return;
   }
 
-  const buttons = categories.map((c) => [{ text: c, callback_data: `CAT_${c}` }]);
-  buttons.push([{ text: "🏠 Home", callback_data: "NAV_HOME" }]);
+  const rows = [];
 
-  await tgEditMessage(chatId, messageId, "📦 <b>Pilih Kategori:</b>", {
-    reply_markup: { inline_keyboard: buttons },
+  // bikin 2 kolom per baris
+  for (let i = 0; i < categories.length; i += 2) {
+    const row = [
+      { text: `📂 ${categories[i]}`, callback_data: `CAT_${categories[i]}` }
+    ];
+
+    if (categories[i + 1]) {
+      row.push({
+        text: `📂 ${categories[i + 1]}`,
+        callback_data: `CAT_${categories[i + 1]}`
+      });
+    }
+
+    rows.push(row);
+  }
+
+  rows.push([{ text: "🏠 Home", callback_data: "NAV_HOME" }]);
+
+  const header = `
+<b>📦 Kategori Produk</b>
+
+Silakan pilih kategori yang kamu butuhkan 👇
+`.trim();
+
+  await tgEditMessage(chatId, messageId, header, {
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: rows },
   });
 }
-
 async function showProducts(chatId, cat, messageId, page = 1) {
   const products = await getProducts(cat);
 
@@ -1415,11 +1447,22 @@ async function handleUpdate(update) {
       await showEditProductMenu(chatId, messageId, cat, rowIndex);
       return;
     }
-  
-    await renderMain(chatId, buildWelcomeText(), mainMenuInline(admin));
-    return;
-  }
+    
+  if (text === "/start") {
+  await addMember(chatId, username);
 
+  const sent = await tgSendMessage(
+    chatId,
+    buildWelcomeText(),
+    { reply_markup: mainMenuInline(admin) }
+  );
+
+  setMainMsgId(chatId, sent?.result?.message_id || 
+  sent?.result?.message?.message_id || 
+  sent?.message?.message_id || sent?.message?.id);
+  return;
+     }
+    
   // invoice manual
   if (/^TX\d+[a-f0-9]{4}$/i.test(text)) {
     await checkAndDeliver(chatId, text);
