@@ -545,10 +545,6 @@ async function showCategoriesEdit(chatId, messageId) {
   });
 }
 
-// ✅ BEST SELLER PICKER (aman, gak bikin Illegal return)
-function bestSellerLabelFor(products) {
-  if (!Array.isArray(products) || products.length === 0) return null;
-
   // ambil stok yang valid (angka)
   const nums = products
     .map((p) => Number(p.stock))
@@ -585,16 +581,17 @@ async function showProducts(chatId, cat, messageId, page = 1) {
     return;
   }
 
-  const bestId = bestSellerLabelFor(products);
-
   const start = (page - 1) * perPage;
   const slice = products.slice(start, start + perPage);
 
   const keyboard = slice.map((p) => {
-    const isBest = bestId && String(p.id) === String(bestId);
-    const title = isBest ? `⭐ BEST SELLER\n${p.name}` : p.name;
-    return [{ text: `${title} — ${rupiah(p.price)}`, callback_data: `BUY_${cat}_${p.id}` }];
-  });
+  return [
+    {
+      text: `${p.name} — ${rupiah(p.price)}`,
+      callback_data: `BUY_${cat}_${p.id}`
+    }
+  ];
+});
 
   const navRow = [];
   if (page > 1) navRow.push({ text: "⬅️ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
