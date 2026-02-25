@@ -572,42 +572,73 @@ async function showProducts(chatId, cat, messageId, page = 1) {
   page = Math.min(Math.max(page, 1), totalPages);
 
   if (!products.length) {
-    await tgEditMessage(chatId, messageId, `⚠️ Produk di <b>${escHtml(cat)}</b> kosong.`, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "⬅️ Kembali", callback_data: "BACK_CAT" }],
-          [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
-        ],
-      },
-    });
+    await tgEditMessage(
+      chatId,
+      messageId,
+      `🗂️ <b>${escHtml(cat)}</b>\n\n<i>Belum ada produk di kategori ini.</i>`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "⬅️ Kembali", callback_data: "BACK_CAT" }],
+            [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
+          ],
+        },
+      }
+    );
     return;
   }
 
   const start = (page - 1) * perPage;
   const slice = products.slice(start, start + perPage);
 
+  const header =
+    `🛍️ <b>Kategori:</b> ${escHtml(cat)}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
+
   const keyboard = slice.map((p) => {
-  return [
-    {
-      text: `${p.name} — ${rupiah(p.price)}`,
-      callback_data: `BUY_${cat}_${p.id}`
-    }
-  ];
-});
+    const name = shorten(p.name, 28);
+    const stok = stockBadge(p.stock);
+
+    return [
+      {
+        text: `${name} • ${stok} — ${rupiah(p.price)}`,
+        callback_data: `BUY_${cat}_${p.id}`,
+      },
+    ];
+  });
 
   const navRow = [];
-  if (page > 1) navRow.push({ text: "⬅️ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
-  navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
-  if (page < totalPages) navRow.push({ text: "Next ➡️", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
+  if (page > 1)
+    navRow.push({
+      text: "⬅️ Prev",
+      callback_data: `PROD_PAGE_${cat}_${page - 1}`,
+    });
+
+  navRow.push({
+    text: `📄 ${page}/${totalPages}`,
+    callback_data: "NOOP",
+  });
+
+  if (page < totalPages)
+    navRow.push({
+      text: "Next ➡️",
+      callback_data: `PROD_PAGE_${cat}_${page + 1}`,
+    });
+
   keyboard.push(navRow);
 
-  keyboard.push([{ text: "⬅️ Kembali", callback_data: "BACK_CAT" }]);
-  keyboard.push([{ text: "🏠 Home", callback_data: "NAV_HOME" }]);
+  keyboard.push([
+    { text: "⬅️ Kembali", callback_data: "BACK_CAT" },
+    { text: "🏠 Home", callback_data: "NAV_HOME" },
+  ]);
 
-  await tgEditMessage(chatId, messageId, `📦 <b>Produk ${escHtml(cat)}</b>\nPilih produk:`, {
+  await tgEditMessage(chatId, messageId, header, {
     reply_markup: { inline_keyboard: keyboard },
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
   });
-}
+    }
 
 /* ================= SEND QRIS (simpan QR_MSG_ID kolom H) ================= */
 async function sendQRIS(chatId, product, invoice) {
