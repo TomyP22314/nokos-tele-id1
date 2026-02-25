@@ -545,17 +545,6 @@ async function showCategoriesEdit(chatId, messageId) {
   });
 }
 
-function bestSellerLabelFor(products) {
-  // Best seller = stock paling kecil (numeric), abaikan UNLIMITED
-  const nums = products
-    .map((p) => {
-      const s = String(p.stock || "").toUpperCase();
-      if (s === "UNLIMITED") return null;
-      const n = Number(p.stock);
-      return Number.isFinite(n) ? n : null;
-    })
-    .filter((x) => x != null);
-
   if (!nums.length) {
     return products[0]?.id ? String(products[0].id) : null;
   }
