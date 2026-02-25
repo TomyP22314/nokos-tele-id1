@@ -1409,18 +1409,7 @@ async function handleUpdate(update) {
       await showEditProductMenu(chatId, messageId, cat, rowIndex);
       return;
     }
-  }
-
-  if (text === "/start") {
-    await addMember(chatId);
-
-    // remove reply keyboard lama (kalau pernah ada)
-    await tg("sendMessage", {
-      chat_id: chatId,
-      text: "✅ Menu siap.",
-      reply_markup: { remove_keyboard: true },
-    });
-
+  
     await renderMain(chatId, buildWelcomeText(), mainMenuInline(admin));
     return;
   }
