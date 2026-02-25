@@ -545,11 +545,24 @@ async function showCategoriesEdit(chatId, messageId) {
   });
 }
 
+// ✅ BEST SELLER PICKER (aman, gak bikin Illegal return)
+function bestSellerLabelFor(products) {
+  if (!Array.isArray(products) || products.length === 0) return null;
+
+  // ambil stok yang valid (angka)
+  const nums = products
+    .map((p) => Number(p.stock))
+    .filter((n) => Number.isFinite(n));
+
+  // kalau stok gak valid semua, ambil produk pertama aja
   if (!nums.length) {
     return products[0]?.id ? String(products[0].id) : null;
   }
+
+  // “best seller” versi simpel: stok paling kecil = paling laku
   const min = Math.min(...nums);
-  const pickP = products.find((p) => Number(p.stock) === min);
+  const pickP = products.find((p) => Number(p.stock) === min) || products[0];
+
   return pickP?.id ? String(pickP.id) : null;
 }
 
