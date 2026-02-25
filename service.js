@@ -1056,9 +1056,15 @@ async function handleUpdate(update) {
 
     /* ===== NAV ===== */
     if (data === "NAV_HOME") {
-      await tgAnswerCallback(cb.id, "OK", false);
-      await renderMain(chatId, buildWelcomeText(), mainMenuInline(admin));
-      return;
+  await tgAnswerCallback(cb.id, "", false);
+
+  await tgEditMessage(
+    chatId,
+    messageId,
+    buildWelcomeText(),
+    { reply_markup: mainMenuInline(admin) }
+  );
+  return;
     }
 
     if (data === "NAV_CAT") {
