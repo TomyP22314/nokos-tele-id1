@@ -212,14 +212,33 @@ function rupiah(n) {
   const num = Number(n || 0);
   return "Rp " + num.toLocaleString("id-ID");
 }
-function escHtml(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
+
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+function escHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function shorten(str, max = 26) {
+  const s = String(str || "").trim();
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
+}
+
+function stockBadge(stock) {
+  const up = String(stock || "").toUpperCase().trim();
+  if (up === "UNLIMITED" || up === "∞") return "♾ Unlimited";
+  const n = Number(stock);
+  if (!Number.isFinite(n)) return "✅ Ready";
+  if (n <= 0) return "⏳ Habis";
+  if (n <= 3) return `⚠️ Sisa ${n}`;
+  return `✅ Ready (${n})`;
 }
 function isAdmin(chatId, username = "") {
   if (String(chatId) === String(ADMIN_CHAT_ID)) return true;
