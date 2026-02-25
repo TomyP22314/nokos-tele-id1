@@ -624,9 +624,9 @@ async function showProducts(chatId, cat, messageId, page = 1) {
   const slice = products.slice(start, start + perPage);
 
   const header =
-    `🛍️ <b>Kategori:</b> ${escHtml(cat)}\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n` +
-    `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
+  `📁 <b>Kategori:</b> ${escHtml(cat)}\n` +
+  `────────────────────────\n` +
+  `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
 
   const keyboard = slice.map((p) => {
     const name = shorten(p.name, 28);
