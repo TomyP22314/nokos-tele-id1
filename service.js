@@ -183,18 +183,20 @@ async function createSheetTab(title) {
   });
 
   // header A:G
-await sheets.spreadsheets.values.update({
-  spreadsheetId: SHEET_ID,
-  range: qRange(`${title}!A1:G1`),
-  valueInputOption: "RAW",
-  requestBody: {
-    values: [["id", "name", "link", "desc", "stock", "price", "image"]],
-  },
-});
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range: qRange(`${title}!A1:G1`),
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [["id", "name", "link", "desc", "stock", "price", "image"]],
+    },
+  });
+}
 
 async function deleteSheetTab(title) {
   const sheetId = await findSheetIdByTitle(title);
   if (sheetId == null) return;
+
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId: SHEET_ID,
     requestBody: { requests: [{ deleteSheet: { sheetId } }] },
@@ -381,7 +383,7 @@ async function addProduct(cat, payload) {
   return { ok: true, msg: "Produk ditambahkan." };
 }
 async function deleteProduct(cat, rowIndex) {
-  await clearRow(cat, rowIndex, "F");
+  await clearRow(cat, rowIndex, "G");
   return { ok: true, msg: "Produk dihapus." };
 }
 
@@ -612,31 +614,32 @@ async function showProducts(chatId, cat, messageId, page = 1) {
     `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
 
   const keyboard = slice.map((p) => {
-  const name = shorten(p.name, 28);
-  const stok = stockBadge(p.stock);
-  return [
-    {
-      text: `${name} • ${stok} - ${rupiah(p.price)}`,
-      callback_data: `VIEW_${cat}_${p.id}`,
-    },
-  ];
-});
+    const name = shorten(p.name, 28);
+    const stok = stockBadge(p.stock);
+    return [
+      {
+        text: `${name} • ${stok} - ${rupiah(p.price)}`,
+        callback_data: `VIEW_${cat}_${p.id}`,
+      },
+    ];
+  });
 
-const navRow = [];
-if (page > 1) navRow.push({ text: "⬅ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
-navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
-if (page < totalPages) navRow.push({ text: "Next ➡", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
+  const navRow = [];
+  if (page > 1) navRow.push({ text: "⬅ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
+  navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
+  if (page < totalPages) navRow.push({ text: "Next ➡", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
 
-keyboard.push(navRow);
+  keyboard.push(navRow);
 
-keyboard.push([
-  { text: "⬅ Back", callback_data: "BACK_CAT" },
-  { text: "🏠 Home", callback_data: "NAV_HOME" },
-]);
+  keyboard.push([
+    { text: "⬅ Back", callback_data: "BACK_CAT" },
+    { text: "🏠 Home", callback_data: "NAV_HOME" },
+  ]);
 
-await tgEditMessage(chatId, messageId, header, {
-  reply_markup: { inline_keyboard: keyboard },
-});
+  await tgEditMessage(chatId, messageId, header, {
+    reply_markup: { inline_keyboard: keyboard },
+  });
+} // ✅ INI PENUTUP showProducts, wajib ada
 
 /* ================= SEND QRIS (simpan QR_MSG_ID kolom H) ================= */
 async function sendQRIS(chatId, product, invoice) {
@@ -1007,8 +1010,8 @@ async function startAddProduct(chatId, messageId, cat) {
     chatId,
     messageId,
     `➕ <b>Tambah Produk</b>\nKategori: <b>${escHtml(cat)}</b>\n\n` +
-      `Kirim format:\n<code>ID|NAME|LINK|DESC|STOCK|PRICE</code>\n\n` +
-      `Contoh:\n<code>1|Netflix Premium|https://...|Akun 1 bulan|10|25000</code>`,
+      `Kirim format:\n<code>ID|NAME|LINK|DESC|STOCK|PRICE|IMAGE</code>\n\n` +
+`Contoh:\n<code>1|Netflix Premium|https://...|Akun 1 bulan|10|25000|https://img.com/a.jpg</code>`,
     { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: `ADM_PROD_CAT_${cat}` }]] } }
   );
 }
