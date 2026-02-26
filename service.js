@@ -665,17 +665,17 @@ async function showProductPreview(chatId, messageId, cat, id) {
     (p.link ? `🔗 Link:\n${escHtml(p.link)}\n` : "");
 
   const backPage = 1; // kalau nanti kamu mau simpan page, tinggal ganti nilainya
-  const kb = {
+    const kb = {
   inline_keyboard: [
     [{ text: "✅ Beli Sekarang", callback_data: `BUY_${cat}_${p.id}` }],
-    [{ text: "⬅ Back", callback_data: `BACK_PROD_${cat}_${backPage}` }],
+    [{ text: "⬅ Back", callback_data: `BACK_TO_LIST_${cat}_1` }], // page default 1
     [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
   ],
 };
 
   // kalau ada URL gambar -> kirim foto (hapus dulu pesan list biar gak numpuk)
   if (p.image && /^https?:\/\//i.test(p.image)) {
-    try { await tgDeleteMessage(chatId, messageId); } catch {}
+    try { await tgDeleteMessage(chatId, messages); } catch {}
     await tgSendPhoto(chatId, p.image, caption, { reply_markup: kb });
     return;
   }
@@ -1097,8 +1097,10 @@ async function handleUpdate(update) {
     if (!chatId) return;
 
     // keep main msg id in sync
-    if (messageId) setMainMsgId(chatId, messageId);
-
+    // HANYA set main msg kalau ini pesan TEXT (menu / list) — bukan preview foto
+if (messageId && cb.message?.text) {
+  setMainMsgId(chatId, messageId);
+}
     const sp = checkSpam(String(chatId));
     if (sp.blocked) {
       await tgAnswerCallback(cb.id, "Terlalu cepat. Tunggu sebentar.", false);
