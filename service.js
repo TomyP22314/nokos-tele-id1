@@ -547,7 +547,40 @@ function buildWelcomeText() {
     `${adminLine}`
   );
 }
-      
+
+/* ================= PAGES (kategori) ================= */
+async function showCategoriesEdit(chatId, messageId) {
+  const categories = await getCategories();
+
+  if (!categories.length) {
+    await tgEditMessage(chatId, messageId, "⚠️ <b>Kategori belum tersedia.</b>", {
+      reply_markup: { inline_keyboard: [backHomeRow()] },
+    });
+    return;
+  }
+
+  const rows = [];
+  for (let i = 0; i < categories.length; i += 2) {
+    const row = [{ text: `📂 ${categories[i]}`, callback_data: `CAT_${categories[i]}` }];
+    if (categories[i + 1]) {
+      row.push({ text: `📂 ${categories[i + 1]}`, callback_data: `CAT_${categories[i + 1]}` });
+    }
+    rows.push(row);
+  }
+
+  rows.push(backHomeRow());
+
+  const header = `
+<b>📦 Kategori Produk</b>
+
+Silakan pilih kategori yang kamu butuhkan 👇
+`.trim();
+
+  await tgEditMessage(chatId, messageId, header, {
+    reply_markup: { inline_keyboard: rows },
+  });
+}
+
 // ================= PAGES (produk) =================
 async function showProducts(chatId, cat, messageId, page = 1) {
   const products = await getProducts(cat);
