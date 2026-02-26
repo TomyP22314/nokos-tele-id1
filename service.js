@@ -228,10 +228,10 @@ function stockBadge(stock) {
   const up = String(stock || "").toUpperCase().trim();
   if (up === "UNLIMITED" || up === "∞") return "♾ Unlimited";
   const n = Number(stock);
-  if (!Number.isFinite(n)) return "✅ Ready";
+  if (!Number.isFinite(n)) return "Stock";
   if (n <= 0) return "⏳ Habis";
   if (n <= 3) return `⚠️ Sisa ${n}`;
-  return `✅ Ready (${n})`;
+  return `Stock (${n})`;
 }
 function isAdmin(chatId, username = "") {
   if (String(chatId) === String(ADMIN_CHAT_ID)) return true;
