@@ -787,6 +787,22 @@ function clearAdminState(chatId) {
   adminState.delete(String(chatId));
 }
 
+/* ================= USER STATE (RAM) ================= */
+const userState = new Map();
+// key: chatId -> { mode: "...", data: {...} }
+
+function setUserState(chatId, mode, data = {}) {
+  userState.set(String(chatId), { mode, data });
+}
+
+function getUserState(chatId) {
+  return userState.get(String(chatId)) || null;
+}
+
+function clearUserState(chatId) {
+  userState.delete(String(chatId));
+}
+
 /* ================= ADMIN UI (2 kolom) ================= */
 function adminMenuInline() {
   const buttons = [
