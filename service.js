@@ -481,6 +481,7 @@ function mainMenuInline(admin) {
   const rows = [
     [
       { text: "📦 Kategori", callback_data: "NAV_CAT" },
+      { text: "🔎 Search", callback_data: "NAV_SEARCH" },
       { text: "🧾 Cek Pesanan", callback_data: "NAV_CEK" },
     ],
     [
@@ -1056,6 +1057,16 @@ async function handleUpdate(update) {
       return;
     }
 
+    if (data === "NAV_SEARCH") {
+  await tgAnswerCallback(cb.id, "OK", false);
+  setUserState(chatId, "SEARCH_WAIT"); // atau apa pun state kamu
+  await tgEditMessage(chatId, messageId,
+    "🔎 <b>Search Produk</b>\n\nKetik kata kunci.\nContoh: <code>netflix</code>",
+    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "NAV_HOME" }]] } }
+  );
+  return;
+    }
+
     if (data === "NAV_CEK") {
       await tgAnswerCallback(cb.id, "OK", false);
       await tgEditMessage(
@@ -1343,6 +1354,42 @@ async function handleUpdate(update) {
     }
     return;
   }
+
+  const ust = getUserState(chatId);
+  
+if (ust?.mode === "SEARCH_WAIT") {
+  clearUserState(chatId);
+
+  const results = await searchProductsGlobal(text);
+
+  if (!results.length) {
+    await renderMain(
+      chatId,
+      `❌ Tidak ditemukan produk untuk: <code>${escHtml(text)}</code>`,
+      mainMenuInline(admin)
+    );
+    return;
+  }
+
+  const top = results.slice(0, 10);
+
+  const kb = top.map(p => ([
+    {
+      text: `${shorten(p.name, 25)} — ${rupiah(p.price)}`,
+      callback_data: `BUY_${p.cat}_${p.id}`,
+    },
+  ]));
+
+  kb.push([{ text: "🔎 Search Lagi", callback_data: "NAV_SEARCH" }]);
+  kb.push([{ text: "🏠 Home", callback_data: "NAV_HOME" }]);
+
+  await renderMain(
+    chatId,
+    `✅ Ditemukan <b>${results.length}</b> hasil untuk: <code>${escHtml(text)}</code>\n\nPilih produk:`,
+    { inline_keyboard: kb }
+  );
+  return;
+}
 
   if (await isBanned(chatId)) {
     await tgSendMessage(chatId, "❌ Kamu diblokir.");
