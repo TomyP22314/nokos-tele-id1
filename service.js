@@ -612,24 +612,31 @@ async function showProducts(chatId, cat, messageId, page = 1) {
     `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
 
   const keyboard = slice.map((p) => {
-    const name = shorten(p.name, 28);
-    const stok = stockBadge(p.stock);
-    return [{ text: `${name} • ${stok} – ${rupiah(p.price)}`, callback_data: `VIEW_${cat}_${p.id}` }];
-    const navRow = [];
-  if (page > 1) navRow.push({ text: "⬅️ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
-  navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
-  if (page < totalPages) navRow.push({ text: "Next ➡️", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
-  keyboard.push(navRow);
+  const name = shorten(p.name, 28);
+  const stok = stockBadge(p.stock);
+  return [
+    {
+      text: `${name} • ${stok} - ${rupiah(p.price)}`,
+      callback_data: `VIEW_${cat}_${p.id}`,
+    },
+  ];
+});
 
-  keyboard.push([
-    { text: "⬅️ Back", callback_data: "BACK_CAT" },
-    { text: "🏠 Home", callback_data: "NAV_HOME" },
-  ]);
+const navRow = [];
+if (page > 1) navRow.push({ text: "⬅ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
+navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
+if (page < totalPages) navRow.push({ text: "Next ➡", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
 
-  await tgEditMessage(chatId, messageId, header, {
-    reply_markup: { inline_keyboard: keyboard },
-  });
-}
+keyboard.push(navRow);
+
+keyboard.push([
+  { text: "⬅ Back", callback_data: "BACK_CAT" },
+  { text: "🏠 Home", callback_data: "NAV_HOME" },
+]);
+
+await tgEditMessage(chatId, messageId, header, {
+  reply_markup: { inline_keyboard: keyboard },
+});
 
 /* ================= SEND QRIS (simpan QR_MSG_ID kolom H) ================= */
 async function sendQRIS(chatId, product, invoice) {
