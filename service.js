@@ -182,14 +182,15 @@ async function createSheetTab(title) {
     requestBody: { requests: [{ addSheet: { properties: { title } } }] },
   });
 
-  // header A:F
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: qRange(`${title}!A1:F1`),
-    valueInputOption: "RAW",
-    requestBody: { values: [["id", "name", "link", "desc", "stock", "price"]] },
-  });
-}
+  // header A:G
+await sheets.spreadsheets.values.update({
+  spreadsheetId: SHEET_ID,
+  range: qRange(`${title}!A1:G1`),
+  valueInputOption: "RAW",
+  requestBody: {
+    values: [["id", "name", "link", "desc", "stock", "price", "image"]],
+  },
+});
 
 async function deleteSheetTab(title) {
   const sheetId = await findSheetIdByTitle(title);
@@ -343,8 +344,9 @@ async function removeCategory(name) {
 }
 
 async function getProducts(category) {
-  const rows = await read(`${category}!A:F`);
+  const rows = await read(`${category}!A:G`); // A:G
   const data = rows.slice(1);
+
   return data
     .map((r, i) => ({
       id: String(r[0] || "").trim(),
@@ -353,6 +355,7 @@ async function getProducts(category) {
       desc: String(r[3] || "").trim(),
       stock: String(r[4] || "").trim(),
       price: String(r[5] || "").trim(),
+      image: String(r[6] || "").trim(),   // ✅ NEW
       rowIndex: i + 2,
       tab: category,
     }))
@@ -360,16 +363,23 @@ async function getProducts(category) {
 }
 
 async function addProduct(cat, payload) {
+  // format: ID|NAME|LINK|DESC|STOCK|PRICE|IMAGE
   const parts = String(payload || "").split("|").map((x) => x.trim());
-  if (parts.length < 6) {
-    return { ok: false, msg: "Format salah. Gunakan: ID|NAME|LINK|DESC|STOCK|PRICE" };
+
+  if (parts.length < 7) {
+    return { ok: false, msg: "Format salah. Gunakan: ID|NAME|LINK|DESC|STOCK|PRICE|IMAGE" };
   }
-  const [id, name, link, desc, stock, price] = parts;
-  if (!id || !name) return { ok: false, msg: "ID dan NAME wajib." };
-  await append(`${cat}!A:F`, [id, name, link, desc, stock, price]);
+
+  const [id, name, link, desc, stock, price, image] = parts;
+
+  if (!id || !name) {
+    return { ok: false, msg: "ID dan NAME wajib." };
+  }
+
+  await append(`${cat}!A:G`, [id, name, link, desc, stock, price, image]);
+
   return { ok: true, msg: "Produk ditambahkan." };
 }
-
 async function deleteProduct(cat, rowIndex) {
   await clearRow(cat, rowIndex, "F");
   return { ok: true, msg: "Produk dihapus." };
@@ -604,10 +614,8 @@ async function showProducts(chatId, cat, messageId, page = 1) {
   const keyboard = slice.map((p) => {
     const name = shorten(p.name, 28);
     const stok = stockBadge(p.stock);
-    return [{ text: `${name} • ${stok} — ${rupiah(p.price)}`, callback_data: `BUY_${cat}_${p.id}` }];
-  });
-
-  const navRow = [];
+    return [{ text: `${name} • ${stok} – ${rupiah(p.price)}`, callback_data: `VIEW_${cat}_${p.id}` }];
+    const navRow = [];
   if (page > 1) navRow.push({ text: "⬅️ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
   navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
   if (page < totalPages) navRow.push({ text: "Next ➡️", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
@@ -1166,6 +1174,16 @@ async function handleUpdate(update) {
       await tgAnswerCallback(cb.id, "OK", false);
       await showCategoriesEdit(chatId, messageId);
       return;
+    }
+
+    if (data.startsWith("VIEW_")) {
+  const parts = data.split("_");
+  const cat = parts[1];
+  const id = parts[2];
+
+  await tgAnswerCallback(cb.id, "Menampilkan preview...", false);
+  await showProductPreview(chatId, messageId, cat, id);
+  return;
     }
 
     /* ===== BUY ===== */
