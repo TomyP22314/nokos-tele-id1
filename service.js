@@ -34,7 +34,7 @@ const SHEET_ID = process.env.SHEET_ID;
 const PAYMENT_PROJECT_SLUG = process.env.PAYMENT_PROJECT_SLUG;
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-
+yoy
 /* ================= SHEET TABS ================= */
 const TAB_CATEGORY = "CATEGORIES";
 const TAB_MEMBER = "MEMBER LIST";
@@ -44,7 +44,7 @@ const TAB_TX_SUCCESS = "TRANSAKSI BERHASIL";
 const TAB_TX_FAIL = "TRANSAKSI GAGAL";
 
 /*
-TRANSAKSI A:H (sesuai screenshot)
+TRANSAKSI A:H
 A time
 B product_id
 C product_name
@@ -179,9 +179,7 @@ async function createSheetTab(title) {
 
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId: SHEET_ID,
-    requestBody: {
-      requests: [{ addSheet: { properties: { title } } }],
-    },
+    requestBody: { requests: [{ addSheet: { properties: { title } } }] },
   });
 
   // header A:F
@@ -189,9 +187,7 @@ async function createSheetTab(title) {
     spreadsheetId: SHEET_ID,
     range: qRange(`${title}!A1:F1`),
     valueInputOption: "RAW",
-    requestBody: {
-      values: [["id", "name", "link", "desc", "stock", "price"]],
-    },
+    requestBody: { values: [["id", "name", "link", "desc", "stock", "price"]] },
   });
 }
 
@@ -212,7 +208,6 @@ function rupiah(n) {
   const num = Number(n || 0);
   return "Rp " + num.toLocaleString("id-ID");
 }
-
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -224,13 +219,11 @@ function escHtml(s) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
-
 function shorten(str, max = 26) {
   const s = String(str || "").trim();
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
 }
-
 function stockBadge(stock) {
   const up = String(stock || "").toUpperCase().trim();
   if (up === "UNLIMITED" || up === "∞") return "♾ Unlimited";
@@ -247,31 +240,14 @@ function isAdmin(chatId, username = "") {
   return false;
 }
 
-/* ================= MAIN MESSAGE (ANTI NUMPUK) ================= */
+/* ================= MAIN MESSAGE ID (optional) ================= */
 const MAIN_MSG = new Map(); // chatId -> message_id
-
-function getMainMsgId(chatId) {
-  return MAIN_MSG.get(String(chatId)) || null;
-}
 function setMainMsgId(chatId, messageId) {
   if (!chatId || !messageId) return;
   MAIN_MSG.set(String(chatId), Number(messageId));
 }
-
-async function renderMain(chatId, text, replyMarkup) {
-  const mid = getMainMsgId(chatId);
-
-  if (mid) {
-    try {
-      await tgEditMessage(chatId, mid, text, { reply_markup: replyMarkup });
-      return mid;
-    } catch {}
-  }
-
-  const sent = await tgSendMessage(chatId, text, { reply_markup: replyMarkup });
-  const newId = sent?.result?.message_id || sent?.message_id;
-  if (newId) setMainMsgId(chatId, newId);
-  return newId;
+function getMainMsgId(chatId) {
+  return MAIN_MSG.get(String(chatId)) || null;
 }
 
 /* ================= ANTI SPAM (RAM) ================= */
@@ -316,8 +292,10 @@ async function addMember(chatId) {
 
 async function getAllMembersChatIds() {
   const rows = await read(`${TAB_MEMBER}!A:C`);
-  const ids = rows.slice(1).map((r) => String(r[2] || "").trim()).filter(Boolean);
-  // uniq
+  const ids = rows
+    .slice(1)
+    .map((r) => String(r[2] || "").trim())
+    .filter(Boolean);
   return [...new Set(ids)];
 }
 
@@ -355,15 +333,12 @@ async function removeCategory(name) {
   const idx = rows.findIndex((r, i) => i > 0 && String(r[0] || "").trim() === n);
   if (idx === -1) return { ok: false, msg: "Kategori tidak ditemukan." };
 
-  // clear row in categories
   await sheets.spreadsheets.values.clear({
     spreadsheetId: SHEET_ID,
     range: qRange(`${TAB_CATEGORY}!A${idx + 1}:A${idx + 1}`),
   });
 
-  // delete sheet tab
   await deleteSheetTab(n);
-
   return { ok: true, msg: "Kategori dihapus." };
 }
 
@@ -385,7 +360,6 @@ async function getProducts(category) {
 }
 
 async function addProduct(cat, payload) {
-  // format: ID|NAME|LINK|DESC|STOCK|PRICE
   const parts = String(payload || "").split("|").map((x) => x.trim());
   if (parts.length < 6) {
     return { ok: false, msg: "Format salah. Gunakan: ID|NAME|LINK|DESC|STOCK|PRICE" };
@@ -487,6 +461,21 @@ async function markFailed(rowIndex, rowData, status = "FAILED") {
   await clearRow(TAB_TX, rowIndex, "H");
 }
 
+/* ================= UI HELPERS ================= */
+function chunk2(buttons) {
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 2) {
+    rows.push(buttons.slice(i, i + 2));
+  }
+  return rows;
+}
+function backHomeRow() {
+  return [{ text: "⬅️ Back", callback_data: "NAV_HOME" }];
+}
+function backAdminRow() {
+  return [{ text: "⬅️ Back", callback_data: "NAV_ADMIN" }];
+}
+
 /* ================= UI KEYBOARD ================= */
 function mainMenuInline(admin) {
   const rows = [
@@ -551,39 +540,22 @@ async function showCategoriesEdit(chatId, messageId) {
   const categories = await getCategories();
 
   if (!categories.length) {
-    await tgEditMessage(
-      chatId,
-      messageId,
-      "⚠️ <b>Kategori belum tersedia.</b>",
-      {
-        parse_mode: "HTML",
-        reply_markup: {
-          inline_keyboard: [[{ text: "🏠 Home", callback_data: "NAV_HOME" }]],
-        },
-      }
-    );
+    await tgEditMessage(chatId, messageId, "⚠️ <b>Kategori belum tersedia.</b>", {
+      reply_markup: { inline_keyboard: [backHomeRow()] },
+    });
     return;
   }
 
   const rows = [];
-
-  // bikin 2 kolom per baris
   for (let i = 0; i < categories.length; i += 2) {
-    const row = [
-      { text: `📂 ${categories[i]}`, callback_data: `CAT_${categories[i]}` }
-    ];
-
+    const row = [{ text: `📂 ${categories[i]}`, callback_data: `CAT_${categories[i]}` }];
     if (categories[i + 1]) {
-      row.push({
-        text: `📂 ${categories[i + 1]}`,
-        callback_data: `CAT_${categories[i + 1]}`
-      });
+      row.push({ text: `📂 ${categories[i + 1]}`, callback_data: `CAT_${categories[i + 1]}` });
     }
-
     rows.push(row);
   }
 
-  rows.push([{ text: "🏠 Home", callback_data: "NAV_HOME" }]);
+  rows.push(backHomeRow());
 
   const header = `
 <b>📦 Kategori Produk</b>
@@ -592,10 +564,10 @@ Silakan pilih kategori yang kamu butuhkan 👇
 `.trim();
 
   await tgEditMessage(chatId, messageId, header, {
-    parse_mode: "HTML",
     reply_markup: { inline_keyboard: rows },
   });
 }
+
 async function showProducts(chatId, cat, messageId, page = 1) {
   const products = await getProducts(cat);
 
@@ -611,8 +583,8 @@ async function showProducts(chatId, cat, messageId, page = 1) {
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "⬅️ Kembali", callback_data: "BACK_CAT" }],
-            [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
+            [{ text: "⬅️ Back", callback_data: "BACK_CAT" }],
+            backHomeRow(),
           ],
         },
       }
@@ -624,53 +596,31 @@ async function showProducts(chatId, cat, messageId, page = 1) {
   const slice = products.slice(start, start + perPage);
 
   const header =
-  `📁 <b>Kategori:</b> ${escHtml(cat)}\n` +
-  `────────────────────────\n` +
-  `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
+    `📁 <b>Kategori:</b> ${escHtml(cat)}\n` +
+    `────────────────────────\n` +
+    `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
 
   const keyboard = slice.map((p) => {
     const name = shorten(p.name, 28);
     const stok = stockBadge(p.stock);
-
-    return [
-      {
-        text: `${name} • ${stok} — ${rupiah(p.price)}`,
-        callback_data: `BUY_${cat}_${p.id}`,
-      },
-    ];
+    return [{ text: `${name} • ${stok} — ${rupiah(p.price)}`, callback_data: `BUY_${cat}_${p.id}` }];
   });
 
   const navRow = [];
-  if (page > 1)
-    navRow.push({
-      text: "⬅️ Prev",
-      callback_data: `PROD_PAGE_${cat}_${page - 1}`,
-    });
-
-  navRow.push({
-    text: `📄 ${page}/${totalPages}`,
-    callback_data: "NOOP",
-  });
-
-  if (page < totalPages)
-    navRow.push({
-      text: "Next ➡️",
-      callback_data: `PROD_PAGE_${cat}_${page + 1}`,
-    });
-
+  if (page > 1) navRow.push({ text: "⬅️ Prev", callback_data: `PROD_PAGE_${cat}_${page - 1}` });
+  navRow.push({ text: `📄 ${page}/${totalPages}`, callback_data: "NOOP" });
+  if (page < totalPages) navRow.push({ text: "Next ➡️", callback_data: `PROD_PAGE_${cat}_${page + 1}` });
   keyboard.push(navRow);
 
   keyboard.push([
-    { text: "⬅️ Kembali", callback_data: "BACK_CAT" },
+    { text: "⬅️ Back", callback_data: "BACK_CAT" },
     { text: "🏠 Home", callback_data: "NAV_HOME" },
   ]);
 
   await tgEditMessage(chatId, messageId, header, {
     reply_markup: { inline_keyboard: keyboard },
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
   });
-    }
+}
 
 /* ================= SEND QRIS (simpan QR_MSG_ID kolom H) ================= */
 async function sendQRIS(chatId, product, invoice) {
@@ -703,9 +653,15 @@ async function sendQRIS(chatId, product, invoice) {
   const sent = await tgSendPhoto(
     chatId,
     qrImageUrl,
-    "🧾 <b>Invoice</b>: <code>" + invoice + "</code>\n" +
-      "📦 <b>Produk</b>: " + escHtml(product.name) + "\n" +
-      "💰 <b>Total</b>: <b>" + rupiah(product.price) + "</b>\n\n" +
+    "🧾 <b>Invoice</b>: <code>" +
+      invoice +
+      "</code>\n" +
+      "📦 <b>Produk</b>: " +
+      escHtml(product.name) +
+      "\n" +
+      "💰 <b>Total</b>: <b>" +
+      rupiah(product.price) +
+      "</b>\n\n" +
       "Silakan scan QRIS di atas.\n" +
       "Setelah bayar, klik <b>🧾 Cek Status</b>.",
     {
@@ -755,13 +711,12 @@ async function checkAndDeliver(chatId, invoice) {
   const status = String(detail?.transaction?.status || detail?.status || "").toUpperCase();
 
   if (status === "COMPLETED" || status === "SUCCESS" || status === "PAID") {
-    // find product by scanning categories
     const cats = await getCategories();
     let product = null;
 
     for (const cat of cats) {
       const prods = await getProducts(cat);
-      const found = prods.find((p) => String(p.id) === String(row[1])); // B product_id
+      const found = prods.find((p) => String(p.id) === String(row[1]));
       if (found) {
         product = found;
         break;
@@ -774,17 +729,19 @@ async function checkAndDeliver(chatId, invoice) {
       return;
     }
 
-    // reduce stock if not UNLIMITED
     if (String(product.stock).toUpperCase() !== "UNLIMITED") {
       const current = Number(product.stock || 0);
       if (current > 0) await updateCell(`${product.tab}!E${product.rowIndex}`, String(current - 1));
     }
 
-    // delete QR message using column H
-    const qrMsgId = row[7];
+    const qrMsgId = row[7]; // H
     if (qrMsgId) {
-      try { await tgDeleteMessage(chatId, Number(qrMsgId)); } catch {}
-      try { await updateCell(`${TAB_TX}!H${tx.rowIndex}`, ""); } catch {}
+      try {
+        await tgDeleteMessage(chatId, Number(qrMsgId));
+      } catch {}
+      try {
+        await updateCell(`${TAB_TX}!H${tx.rowIndex}`, "");
+      } catch {}
     }
 
     await markSuccess(tx.rowIndex, row);
@@ -802,8 +759,12 @@ async function checkAndDeliver(chatId, invoice) {
   if (status === "EXPIRED" || status === "FAILED" || status === "CANCELLED") {
     const qrMsgId = row[7];
     if (qrMsgId) {
-      try { await tgDeleteMessage(chatId, Number(qrMsgId)); } catch {}
-      try { await updateCell(`${TAB_TX}!H${tx.rowIndex}`, ""); } catch {}
+      try {
+        await tgDeleteMessage(chatId, Number(qrMsgId));
+      } catch {}
+      try {
+        await updateCell(`${TAB_TX}!H${tx.rowIndex}`, "");
+      } catch {}
     }
     await markFailed(tx.rowIndex, row, status);
     await tgSendMessage(chatId, "❌ Transaksi gagal / expired.");
@@ -814,9 +775,7 @@ async function checkAndDeliver(chatId, invoice) {
 }
 
 /* ================= ADMIN STATE (RAM) ================= */
-const adminState = new Map(); 
-// key: chatId -> { mode: "...", data: {...} }
-
+const adminState = new Map();
 function setAdminState(chatId, mode, data = {}) {
   adminState.set(String(chatId), { mode, data });
 }
@@ -827,17 +786,17 @@ function clearAdminState(chatId) {
   adminState.delete(String(chatId));
 }
 
-/* ================= ADMIN UI ================= */
+/* ================= ADMIN UI (2 kolom) ================= */
 function adminMenuInline() {
-  return {
-    inline_keyboard: [
-      [{ text: "📊 Dashboard", callback_data: "ADM_DASH" }],
-      [{ text: "📢 Broadcast", callback_data: "ADM_BC" }],
-      [{ text: "📁 Kelola Kategori", callback_data: "ADM_CAT" }],
-      [{ text: "📦 Kelola Produk", callback_data: "ADM_PROD" }],
-      [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
-    ],
-  };
+  const buttons = [
+    { text: "📊 Dashboard", callback_data: "ADM_DASH" },
+    { text: "📢 Broadcast", callback_data: "ADM_BC" },
+    { text: "📁 Kelola Kategori", callback_data: "ADM_CAT" },
+    { text: "📦 Kelola Produk", callback_data: "ADM_PROD" },
+    { text: "🏠 Home", callback_data: "NAV_HOME" },
+  ];
+  const rows = chunk2(buttons);
+  return { inline_keyboard: rows };
 }
 
 async function showAdminHome(chatId, messageId) {
@@ -861,7 +820,7 @@ async function showAdminDashboard(chatId, messageId) {
       `✅ Sukses: <b>${totalSuccess}</b>\n` +
       `❌ Gagal: <b>${totalFail}</b>\n\n` +
       `TRANSAKSI aktif ada di tab <b>${TAB_TX}</b>.`,
-    { reply_markup: adminMenuInline() }
+    { reply_markup: { inline_keyboard: [...adminMenuInline().inline_keyboard, backAdminRow()] } }
   );
 }
 
@@ -871,13 +830,12 @@ async function startBroadcast(chatId, messageId) {
   await tgEditMessage(
     chatId,
     messageId,
-    `📢 <b>BROADCAST</b>\n\nKirim teks broadcast sekarang.\n\n` +
-      `Tips: bisa pakai HTML <b>bold</b>, <code>code</code>.`,
-    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: "NAV_ADMIN" }]] } }
+    `📢 <b>BROADCAST</b>\n\nKirim teks broadcast sekarang.\n\nTips: bisa pakai HTML <b>bold</b>, <code>code</code>.`,
+    { reply_markup: { inline_keyboard: [backAdminRow()] } }
   );
 }
 
-async function runBroadcast(chatId, text) {
+async function runBroadcast(text) {
   const members = await getAllMembersChatIds();
   let ok = 0;
   let fail = 0;
@@ -890,7 +848,6 @@ async function runBroadcast(chatId, text) {
     } catch {
       fail += 1;
     }
-    // delay kecil biar aman (anti flood)
     await new Promise((r) => setTimeout(r, 35));
   }
 
@@ -900,15 +857,11 @@ async function runBroadcast(chatId, text) {
 /* ================= ADMIN: CATEGORY MGMT ================= */
 async function showCategoryMgmt(chatId, messageId) {
   const cats = await getCategories();
-
-  const kb = [];
-  kb.push([{ text: "➕ Tambah Kategori", callback_data: "ADM_CAT_ADD" }]);
-
-  if (cats.length) {
-    kb.push([{ text: "🗑 Hapus Kategori", callback_data: "ADM_CAT_DEL" }]);
-  }
-
-  kb.push([{ text: "⬅️ Kembali", callback_data: "NAV_ADMIN" }]);
+  const kb = [
+    [{ text: "➕ Tambah Kategori", callback_data: "ADM_CAT_ADD" }],
+    ...(cats.length ? [[{ text: "🗑 Hapus Kategori", callback_data: "ADM_CAT_DEL" }]] : []),
+    backAdminRow(),
+  ];
 
   await tgEditMessage(chatId, messageId, `📁 <b>KELOLA KATEGORI</b>\nTotal: <b>${cats.length}</b>`, {
     reply_markup: { inline_keyboard: kb },
@@ -921,7 +874,7 @@ async function startAddCategory(chatId, messageId) {
     chatId,
     messageId,
     `➕ <b>Tambah Kategori</b>\n\nKirim nama kategori (contoh: <code>APK NONTON</code>)`,
-    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: "ADM_CAT" }]] } }
+    { reply_markup: { inline_keyboard: [backAdminRow()] } }
   );
 }
 
@@ -929,13 +882,13 @@ async function showDeleteCategoryList(chatId, messageId) {
   const cats = await getCategories();
   if (!cats.length) {
     await tgEditMessage(chatId, messageId, "Tidak ada kategori.", {
-      reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: "ADM_CAT" }]] },
+      reply_markup: { inline_keyboard: [backAdminRow()] },
     });
     return;
   }
 
   const kb = cats.map((c) => [{ text: `🗑 ${c}`, callback_data: `ADM_CAT_DEL_DO_${c}` }]);
-  kb.push([{ text: "⬅️ Kembali", callback_data: "ADM_CAT" }]);
+  kb.push(backAdminRow());
 
   await tgEditMessage(chatId, messageId, "🗑 <b>Pilih kategori yang mau dihapus:</b>", {
     reply_markup: { inline_keyboard: kb },
@@ -947,13 +900,13 @@ async function showProductMgmt(chatId, messageId) {
   const cats = await getCategories();
   if (!cats.length) {
     await tgEditMessage(chatId, messageId, "⚠️ Kategori kosong.", {
-      reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: "NAV_ADMIN" }]] },
+      reply_markup: { inline_keyboard: [backAdminRow()] },
     });
     return;
   }
 
   const kb = cats.map((c) => [{ text: c, callback_data: `ADM_PROD_CAT_${c}` }]);
-  kb.push([{ text: "⬅️ Kembali", callback_data: "NAV_ADMIN" }]);
+  kb.push(backAdminRow());
 
   await tgEditMessage(chatId, messageId, "📦 <b>Pilih kategori untuk kelola produk:</b>", {
     reply_markup: { inline_keyboard: kb },
@@ -971,10 +924,10 @@ async function showAdminProducts(chatId, messageId, cat) {
   }
 
   if (prods.length > 15) {
-    kb.push([{ text: "⚠️ Banyak produk, edit via search/manual", callback_data: "NOOP" }]);
+    kb.push([{ text: "⚠️ Banyak produk (tampil 15)", callback_data: "NOOP" }]);
   }
 
-  kb.push([{ text: "⬅️ Kembali", callback_data: "ADM_PROD" }]);
+  kb.push([{ text: "⬅️ Back", callback_data: "ADM_PROD" }]);
 
   await tgEditMessage(
     chatId,
@@ -994,10 +947,12 @@ async function showEditProductMenu(chatId, messageId, cat, rowIndex) {
 
   const kb = {
     inline_keyboard: [
-      [{ text: "💰 Edit Harga", callback_data: `ADM_SET_PRICE_${cat}_${rowIndex}` }],
-      [{ text: "📦 Edit Stock", callback_data: `ADM_SET_STOCK_${cat}_${rowIndex}` }],
+      [
+        { text: "💰 Edit Harga", callback_data: `ADM_SET_PRICE_${cat}_${rowIndex}` },
+        { text: "📦 Edit Stock", callback_data: `ADM_SET_STOCK_${cat}_${rowIndex}` },
+      ],
       [{ text: "🗑 Hapus Produk", callback_data: `ADM_DEL_PROD_${cat}_${rowIndex}` }],
-      [{ text: "⬅️ Kembali", callback_data: `ADM_PROD_CAT_${cat}` }],
+      [{ text: "⬅️ Back", callback_data: `ADM_PROD_CAT_${cat}` }],
     ],
   };
 
@@ -1022,7 +977,7 @@ async function startAddProduct(chatId, messageId, cat) {
     `➕ <b>Tambah Produk</b>\nKategori: <b>${escHtml(cat)}</b>\n\n` +
       `Kirim format:\n<code>ID|NAME|LINK|DESC|STOCK|PRICE</code>\n\n` +
       `Contoh:\n<code>1|Netflix Premium|https://...|Akun 1 bulan|10|25000</code>`,
-    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: `ADM_PROD_CAT_${cat}` }]] } }
+    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: `ADM_PROD_CAT_${cat}` }]] } }
   );
 }
 
@@ -1032,7 +987,7 @@ async function startSetPrice(chatId, messageId, cat, rowIndex) {
     chatId,
     messageId,
     `💰 <b>Edit Harga</b>\nKategori: <b>${escHtml(cat)}</b>\nRow: <b>${rowIndex}</b>\n\nKirim harga baru (angka saja).`,
-    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]] } }
+    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]] } }
   );
 }
 
@@ -1042,7 +997,7 @@ async function startSetStock(chatId, messageId, cat, rowIndex) {
     chatId,
     messageId,
     `📦 <b>Edit Stock</b>\nKategori: <b>${escHtml(cat)}</b>\nRow: <b>${rowIndex}</b>\n\nKirim stock baru (angka / UNLIMITED).`,
-    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]] } }
+    { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]] } }
   );
 }
 
@@ -1088,15 +1043,11 @@ async function handleUpdate(update) {
 
     /* ===== NAV ===== */
     if (data === "NAV_HOME") {
-  await tgAnswerCallback(cb.id, "", false);
-
-  await tgEditMessage(
-    chatId,
-    messageId,
-    buildWelcomeText(),
-    { reply_markup: mainMenuInline(admin) }
-  );
-  return;
+      await tgAnswerCallback(cb.id, "", false);
+      await tgEditMessage(chatId, messageId, buildWelcomeText(), {
+        reply_markup: mainMenuInline(admin),
+      });
+      return;
     }
 
     if (data === "NAV_CAT") {
@@ -1111,7 +1062,7 @@ async function handleUpdate(update) {
         chatId,
         messageId,
         `🧾 <b>Cek Pesanan</b>\n\nKirim invoice kamu (contoh: <code>TX1700000000abcd</code>)`,
-        { reply_markup: mainMenuInline(admin) }
+        { reply_markup: { inline_keyboard: [...mainMenuInline(admin).inline_keyboard, backHomeRow()] } }
       );
       return;
     }
@@ -1127,7 +1078,7 @@ async function handleUpdate(update) {
           `3) Scan QRIS & bayar\n` +
           `4) Klik <b>🧾 Cek Status</b>\n\n` +
           `✅ Setelah sukses, link dikirim otomatis.`,
-        { reply_markup: mainMenuInline(admin) }
+        { reply_markup: { inline_keyboard: [...mainMenuInline(admin).inline_keyboard, backHomeRow()] } }
       );
       return;
     }
@@ -1144,7 +1095,7 @@ async function handleUpdate(update) {
           `Kalau QRIS belum muncul, tunggu 10-30 detik lalu coba lagi.\n` +
           `Kalau sudah bayar tapi belum terkirim, klik <b>🧾 Cek Status</b>.\n\n` +
           `${adminLine}`,
-        { reply_markup: mainMenuInline(admin) }
+        { reply_markup: { inline_keyboard: [...mainMenuInline(admin).inline_keyboard, backHomeRow()] } }
       );
       return;
     }
@@ -1152,7 +1103,7 @@ async function handleUpdate(update) {
     if (data === "NAV_PING") {
       await tgAnswerCallback(cb.id, "OK", false);
       await tgEditMessage(chatId, messageId, "✅ Pong! Bot aktif 🔥", {
-        reply_markup: mainMenuInline(admin),
+        reply_markup: { inline_keyboard: [...mainMenuInline(admin).inline_keyboard, backHomeRow()] },
       });
       return;
     }
@@ -1217,7 +1168,7 @@ async function handleUpdate(update) {
       return;
     }
 
-    /* ===== CANCEL (hapus QR by kolom H) ===== */
+    /* ===== CANCEL ===== */
     if (data.startsWith("CANCEL_")) {
       const invoice = data.replace("CANCEL_", "");
       await tgAnswerCallback(cb.id, "Membatalkan...", false);
@@ -1230,21 +1181,32 @@ async function handleUpdate(update) {
 
       const row = tx.data;
 
-      // HAPUS pesan QR/invoice yang tersimpan di kolom H
-      const qrMsgId = row[7];
+      const qrMsgId = row[7]; // H
       if (qrMsgId) {
-        try { await tgDeleteMessage(chatId, Number(qrMsgId)); } catch {}
-        try { await updateCell(`${TAB_TX}!H${tx.rowIndex}`, ""); } catch {}
+        try {
+          await tgDeleteMessage(chatId, Number(qrMsgId));
+        } catch {}
+        try {
+          await updateCell(`${TAB_TX}!H${tx.rowIndex}`, "");
+        } catch {}
       }
 
-      // CANCELLED + pindah ke gagal
       await markFailed(tx.rowIndex, row, "CANCELLED");
 
-      // hapus pesan yang diklik juga (biar bersih)
-      try { await tgDeleteMessage(chatId, messageId); } catch {}
+      // hapus pesan yang diklik (pesan QRIS)
+      try {
+        await tgDeleteMessage(chatId, messageId);
+      } catch {}
 
-      // balik menu utama
-      await renderMain(chatId, buildWelcomeText(), mainMenuInline(admin));
+      // balik ke menu
+      const mid = getMainMsgId(chatId);
+      if (mid) {
+        await tgEditMessage(chatId, mid, buildWelcomeText(), { reply_markup: mainMenuInline(admin) });
+      } else {
+        const sent = await tgSendMessage(chatId, buildWelcomeText(), { reply_markup: mainMenuInline(admin) });
+        const newId = sent?.result?.message_id || sent?.message_id;
+        if (newId) setMainMsgId(chatId, newId);
+      }
       return;
     }
 
@@ -1387,12 +1349,32 @@ async function handleUpdate(update) {
     return;
   }
 
-  // ADMIN STATE HANDLING (Broadcast / Add Category / Add Product / Set Price/Stock)
+  // /start (KIRIM PESAN BARU)
+  if (text === "/start") {
+    await addMember(chatId);
+
+    const sent = await tgSendMessage(chatId, buildWelcomeText(), {
+      reply_markup: mainMenuInline(admin),
+    });
+
+    const newId = sent?.result?.message_id || sent?.message_id;
+    if (newId) setMainMsgId(chatId, newId);
+    return;
+  }
+
+  // invoice manual
+  if (/^TX\d+[a-f0-9]{4}$/i.test(text)) {
+    await checkAndDeliver(chatId, text);
+    return;
+  }
+
+  // ADMIN STATE HANDLING
   if (admin) {
     const st = getAdminState(chatId);
+
     if (st?.mode === "BC_WAIT_TEXT") {
       clearAdminState(chatId);
-      const result = await runBroadcast(chatId, text);
+      const result = await runBroadcast(text);
       await tgSendMessage(
         chatId,
         `✅ Broadcast selesai.\n\nTerkirim: <b>${result.ok}</b>\nGagal: <b>${result.fail}</b>\nTotal: <b>${result.total}</b>`
@@ -1404,7 +1386,9 @@ async function handleUpdate(update) {
       const mid = st.data.messageId;
       clearAdminState(chatId);
       const r = await addCategory(text);
-      await tgEditMessage(chatId, mid, r.ok ? `✅ ${r.msg}` : `❌ ${r.msg}`, { reply_markup: adminMenuInline() });
+      await tgEditMessage(chatId, mid, r.ok ? `✅ ${r.msg}` : `❌ ${r.msg}`, {
+        reply_markup: adminMenuInline(),
+      });
       return;
     }
 
@@ -1413,7 +1397,7 @@ async function handleUpdate(update) {
       clearAdminState(chatId);
       const r = await addProduct(cat, text);
       await tgEditMessage(chatId, messageId, r.ok ? `✅ ${r.msg}` : `❌ ${r.msg}`, {
-        reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: `ADM_PROD_CAT_${cat}` }]] },
+        reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: `ADM_PROD_CAT_${cat}` }]] },
       });
       return;
     }
@@ -1424,7 +1408,9 @@ async function handleUpdate(update) {
       const price = String(text).replace(/[^\d]/g, "");
       if (!price) {
         await tgEditMessage(chatId, messageId, "❌ Harga tidak valid.", {
-          reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]] },
+          reply_markup: {
+            inline_keyboard: [[{ text: "⬅️ Back", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]],
+          },
         });
         return;
       }
@@ -1439,7 +1425,9 @@ async function handleUpdate(update) {
       const v = String(text || "").trim();
       if (!v) {
         await tgEditMessage(chatId, messageId, "❌ Stock tidak valid.", {
-          reply_markup: { inline_keyboard: [[{ text: "⬅️ Kembali", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]] },
+          reply_markup: {
+            inline_keyboard: [[{ text: "⬅️ Back", callback_data: `ADM_PROD_EDIT_${cat}_${rowIndex}` }]],
+          },
         });
         return;
       }
@@ -1447,26 +1435,6 @@ async function handleUpdate(update) {
       await showEditProductMenu(chatId, messageId, cat, rowIndex);
       return;
     }
-    
-  if (text === "/start") {
-  await addMember(chatId, username);
-
-  const sent = await tgSendMessage(
-    chatId,
-    buildWelcomeText(),
-    { reply_markup: mainMenuInline(admin) }
-  );
-
-  setMainMsgId(chatId, sent?.result?.message_id || 
-  sent?.result?.message?.message_id || 
-  sent?.message?.message_id || sent?.message?.id);
-  return;
-     }
-    
-  // invoice manual
-  if (/^TX\d+[a-f0-9]{4}$/i.test(text)) {
-    await checkAndDeliver(chatId, text);
-    return;
   }
 
   await tgSendMessage(chatId, "Ketik /start untuk membuka menu.");
