@@ -553,28 +553,36 @@ async function showCategoriesEdit(chatId, messageId) {
   const categories = await getCategories();
 
   if (!categories.length) {
-    await tgEditMessage(chatId, messageId, "⚠️ <b>Kategori belum tersedia.</b>", {
-      reply_markup: { inline_keyboard: [backHomeRow()] },
-    });
+    await tgEditMessage(
+      chatId,
+      messageId,
+      "⚠️ <b>Kategori belum tersedia.</b>",
+      { reply_markup: { inline_keyboard: [backHomeRow()] } }
+    );
     return;
   }
 
   const rows = [];
   for (let i = 0; i < categories.length; i += 2) {
-    const row = [{ text: `📂 ${categories[i]}`, callback_data: `CAT_${categories[i]}` }];
+    const row = [
+      { text: `📂 ${categories[i]}`, callback_data: `CAT_${categories[i]}` },
+    ];
+
     if (categories[i + 1]) {
-      row.push({ text: `📂 ${categories[i + 1]}`, callback_data: `CAT_${categories[i + 1]}` });
+      row.push({
+        text: `📂 ${categories[i + 1]}`,
+        callback_data: `CAT_${categories[i + 1]}`,
+      });
     }
+
     rows.push(row);
   }
 
   rows.push(backHomeRow());
 
-  const header = `
-<b>📦 Kategori Produk</b>
-
-Silakan pilih kategori yang kamu butuhkan 👇
-`.trim();
+  const header =
+    `<b>📦 Kategori Produk</b>\n\n` +
+    `Silakan pilih kategori yang kamu butuhkan 👇`;
 
   await tgEditMessage(chatId, messageId, header, {
     reply_markup: { inline_keyboard: rows },
@@ -592,19 +600,100 @@ async function showProducts(chatId, cat, messageId, page = 1) {
     await tgEditMessage(
       chatId,
       messageId,
-      `🗂️ <b>${escHtml(cat)}</b>\n\n<i>Belum ada produk di kategori ini.</i>`,
+      `📂 <b>${escHtml(cat)}</b>\n\n<i>Belum ada produk di kategori ini.</i>`,
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "⬅️ Back", callback_data: "BACK_CAT" }],
-            backHomeRow(),
-          ],
+  [{ text: "⬅ Back", callback_data: "BACK_CAT" }],
+  [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
+],
         },
       }
     );
     return;
   }
 
+  const start = (page - 1) * perPage;
+  const slice = products.slice(start, start + perPage);
+
+  const header =
+    `📁 <b>Kategori:</b> ${escHtml(cat)}\n` +
+    `────────────────────────\n` +
+    `<i>Pilih produk terbaik untuk kamu 👇</i>\n`;
+
+  const keyboard = slice.map((p) => {
+    const name = shorten(p.name, 28);
+    const stok = stockBadge(p.stock);
+
+    return [
+      {
+        text: `${name} • ${stok} - ${rupiah(p.price)}`,
+        callback_data: `VIEW_${cat}_${p.id}`,
+      },
+    ];
+  });
+
+  const navRow = [];
+  if (page > 1) {
+    navRow.push({
+      text: "⬅ Prev",
+      callback_data: `PROD_PAGE_${cat}_${page - 1}`,
+    });
+  }
+
+  navRow.push({
+    text: `📄 ${page}/${totalPages}`,
+    callback_data: "NOOP",
+  });
+
+  if (page < totalPages) {
+    navRow.push({
+      text: "Next ➡",
+      callback_data: `PROD_PAGE_${cat}_${page + 1}`,
+    });
+  }
+
+  keyboard.push(navRow);
+
+  keyboard.push([
+    { text: "⬅ Back", callback_data: "BACK_CAT" },
+    { text: "🏠 Home", callback_data: "NAV_HOME" },
+  ]);
+
+  await tgEditMessage(chatId, messageId, header, {
+    reply_markup: { inline_keyboard: keyboard },
+  });
+}
+
+  const caption =
+    `🧾 <b>PREVIEW PRODUK</b>\n` +
+    `────────────────────────\n` +
+    `📦 <b>${escHtml(p.name)}</b>\n` +
+    (p.desc ? `📝 ${escHtml(p.desc)}\n` : "") +
+    `📦 Stock: <b>${escHtml(stockBadge(p.stock))}</b>\n` +
+    `💰 Harga: <b>${rupiah(p.price)}</b>\n` +
+    (p.link ? `\n🔗 Link:\n${escHtml(p.link)}\n` : "");
+
+  const kb = {
+    inline_keyboard: [
+      [{ text: "✅ Beli Sekarang", callback_data: `BUY_${cat}_${p.id}` }],
+      [{ text: "⬅ Back", callback_data: `CAT_${cat}` }],
+      [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
+    ],
+  };
+
+  // Jika ada URL gambar -> kirim foto + caption
+  if (p.image && /^https?:\/\//i.test(p.image)) {
+    await tgSendPhoto(chatId, p.image, caption, { reply_markup: kb });
+    return;
+  }
+
+  // Kalau tidak ada gambar -> tampilkan text saja
+  await tgEditMessage(chatId, messageId, caption + "\n\n<i>(Gambar belum tersedia)</i>", {
+    reply_markup: kb,
+  });
+}
+  
   const start = (page - 1) * perPage;
   const slice = products.slice(start, start + perPage);
 
