@@ -665,12 +665,12 @@ async function showProductPreview(chatId, messageId, cat, id) {
     (p.link ? `🔗 Link:\n${escHtml(p.link)}\n` : "");
 
   const kb = {
-    inline_keyboard: [
-      [{ text: "✅ Beli Sekarang", callback_data: `BUY_${cat}_${p.id}` }],
-      [{ text: "⬅️ Back", callback_data: `CAT_${cat}` }], // balik ke list produk kategori ini
-      [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
-    ],
-  };
+  inline_keyboard: [
+    [{ text: "✅ Beli Sekarang", callback_data: `BUY_${cat}_${p.id}` }],
+    [{ text: "⬅ Back", callback_data: "BACK_CAT" }],
+    [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
+  ],
+};
 
   // kalau ada URL gambar -> kirim foto (hapus dulu pesan list biar gak numpuk)
   if (p.image && /^https?:\/\//i.test(p.image)) {
@@ -1229,10 +1229,12 @@ async function handleUpdate(update) {
     }
 
     if (data === "BACK_CAT") {
-      await tgAnswerCallback(cb.id, "OK", false);
-      await showCategoriesEdit(chatId, messageId);
-      return;
-    }
+  await tgAnswerCallback(cb.id, "OK", false);
+
+  const mid = getMainMsgId(chatId) || messageId;
+  await showCategoriesEdit(chatId, mid);
+  return;
+}
 
     if (data.startsWith("VIEW_")) {
   const parts = data.split("_");
