@@ -34,7 +34,7 @@ const SHEET_ID = process.env.SHEET_ID;
 const PAYMENT_PROJECT_SLUG = process.env.PAYMENT_PROJECT_SLUG;
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-yoy
+
 /* ================= SHEET TABS ================= */
 const TAB_CATEGORY = "CATEGORIES";
 const TAB_MEMBER = "MEMBER LIST";
