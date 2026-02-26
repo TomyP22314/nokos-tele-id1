@@ -664,10 +664,11 @@ async function showProductPreview(chatId, messageId, cat, id) {
     `💰 Harga: <b>${rupiah(p.price)}</b>\n` +
     (p.link ? `🔗 Link:\n${escHtml(p.link)}\n` : "");
 
+  const backPage = 1; // kalau nanti kamu mau simpan page, tinggal ganti nilainya
   const kb = {
   inline_keyboard: [
     [{ text: "✅ Beli Sekarang", callback_data: `BUY_${cat}_${p.id}` }],
-    [{ text: "⬅ Back", callback_data: "BACK_CAT" }],
+    [{ text: "⬅ Back", callback_data: `BACK_PROD_${cat}_${backPage}` }],
     [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
   ],
 };
@@ -1124,12 +1125,16 @@ async function handleUpdate(update) {
     if (data === "NAV_HOME") {
   await tgAnswerCallback(cb.id, "", false);
 
-  // kalau callback datang dari pesan foto, edit main message saja
   const mid = getMainMsgId(chatId) || messageId;
-
   await tgEditMessage(chatId, mid, buildWelcomeText(), {
     reply_markup: mainMenuInline(admin),
   });
+
+  // opsional: hapus pesan preview foto
+  try {
+    await tgDeleteMessage(chatId, messageId);
+  } catch {}
+
   return;
 }
 
@@ -1235,6 +1240,26 @@ async function handleUpdate(update) {
   await showCategoriesEdit(chatId, mid);
   return;
 }
+
+    if (data.startsWith("BACK_PROD_")) {
+  // BACK_PROD_{cat}_{page}
+  const parts = data.split("_");
+  const cat = parts[2];
+  const page = Number(parts[3] || 1);
+
+  await tgAnswerCallback(cb.id, "OK", false);
+
+  // penting: render ke MAIN message (bukan message foto)
+  const mid = getMainMsgId(chatId) || messageId;
+  await showProducts(chatId, cat, mid, page);
+
+  // opsional: hapus pesan preview foto biar tidak numpuk
+  try {
+    await tgDeleteMessage(chatId, messageId);
+  } catch {}
+
+  return;
+    }
 
     if (data.startsWith("VIEW_")) {
   const parts = data.split("_");
