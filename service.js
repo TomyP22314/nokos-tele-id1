@@ -34,6 +34,7 @@ const SHEET_ID = process.env.SHEET_ID;
 const PAYMENT_PROJECT_SLUG = process.env.PAYMENT_PROJECT_SLUG;
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+const FORCE_CHANNEL = process.env.FORCE_CHANNEL;
 
 /* ================= SHEET TABS ================= */
 const TAB_CATEGORY = "CATEGORIES";
@@ -241,6 +242,24 @@ function isAdmin(chatId, username = "") {
   if (ADMIN_USERNAME && String(username || "").toLowerCase() === ADMIN_USERNAME.toLowerCase())
     return true;
   return false;
+}
+
+/* ================= FORCE CHANNEL CHECK ================= */
+async function isMemberOfChannel(chatId) {
+  if (!FORCE_CHANNEL) return true;
+
+  try {
+    const res = await tg("getChatMember", {
+      chat_id: FORCE_CHANNEL,
+      user_id: chatId,
+    });
+
+    const status = res?.result?.status;
+    return ["member", "administrator", "creator"].includes(status);
+  } catch (e) {
+    console.log("CHECK CHANNEL ERROR:", e?.message || e);
+    return false;
+  }
 }
 
 /* ================= MAIN MESSAGE ID (optional) ================= */
