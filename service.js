@@ -656,13 +656,14 @@ async function showProductPreview(chatId, messageId, cat, id, page = 1) {
   }
 
   const caption =
-    `🧾 <b>PREVIEW PRODUK</b>\n` +
-    `────────────────────\n` +
-    `📦 <b>${escHtml(p.name)}</b>\n` +
-    (p.desc ? `📝 ${escHtml(p.desc)}\n` : "") +
-    `📦 Stock: <b>${escHtml(stockBadge(p.stock))}</b>\n` +
-    `💰 Harga: <b>${rupiah(p.price)}</b>\n` +
-    (p.link ? `🔗 Link:\n${escHtml(p.link)}\n` : "");
+  `🧾 <b>PREVIEW PRODUK</b>\n` +
+  `────────────────────\n` +
+  `📦 <b>${escHtml(p.name)}</b>\n` +
+  (p.desc ? `📝 ${escHtml(p.desc)}\n` : "") +
+  `📦 Stock: <b>${escHtml(stockBadge(p.stock))}</b>\n` +
+  `💰 Harga: <b>${rupiah(p.price)}</b>\n` +
+  `━━━━━━━━━━━━━━━━━━━━\n` +
+  `<i>Link akan dikirim otomatis setelah pembayaran berhasil ✅</i>`;
 
   const kb = {
     inline_keyboard: [
