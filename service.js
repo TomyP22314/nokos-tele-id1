@@ -17,6 +17,7 @@ const REQUIRED_ENVS = [
   "PAYMENT_PROJECT_SLUG",
   "PAYMENT_API_KEY",
   "WEBHOOK_SECRET",
+  "FORCE_CHANNEL",
 ];
 
 for (const k of REQUIRED_ENVS) {
@@ -34,7 +35,10 @@ const SHEET_ID = process.env.SHEET_ID;
 const PAYMENT_PROJECT_SLUG = process.env.PAYMENT_PROJECT_SLUG;
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-const FORCE_CHANNEL = process.env.FORCE_CHANNEL;
+const FORCE_CHANNEL = process.env.FORCE_CHANNEL || "";
+const FORCE_CHANNEL_LINK =
+  process.env.FORCE_CHANNEL_LINK ||
+  (FORCE_CHANNEL.startsWith("@") ? `https://t.me/${FORCE_CHANNEL.replace("@", "")}` : "");
 
 /* ================= SHEET TABS ================= */
 const TAB_CATEGORY = "CATEGORIES";
@@ -245,20 +249,44 @@ function isAdmin(chatId, username = "") {
 }
 
 /* ================= FORCE CHANNEL CHECK ================= */
-async function isMemberOfChannel(chatId) {
-  if (!FORCE_CHANNEL) return true;
+async function isMemberOfForceChannel(userId) {
+  if (!FORCE_CHANNEL) return true; // kalau env kosong, fitur off
 
-  try {
-    const res = await tg("getChatMember", {
-      chat_id: FORCE_CHANNEL,
-      user_id: chatId,
-    });
+  const res = await tg("getChatMember", {
+    chat_id: FORCE_CHANNEL,
+    user_id: userId,
+  });
 
-    const status = res?.result?.status;
-    return ["member", "administrator", "creator"].includes(status);
-  } catch (e) {
-    console.log("CHECK CHANNEL ERROR:", e?.message || e);
-    return false;
+  // kalau error (bot bukan admin / channel salah) => anggap belum join biar aman
+  if (!res?.ok) return false;
+
+  const st = res.result?.status; // "creator" | "administrator" | "member" | "left" | "kicked" | "restricted"
+  return st === "creator" || st === "administrator" || st === "member";
+}
+
+async function renderForceJoin(chatId, messageId, admin) {
+  const kb = {
+    inline_keyboard: [
+      ...(FORCE_CHANNEL_LINK
+        ? [[{ text: "✅ Join Channel", url: FORCE_CHANNEL_LINK }]]
+        : []),
+      [{ text: "🔄 Saya sudah join", callback_data: "CHECK_JOIN" }],
+      [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
+    ],
+  };
+
+  const text =
+    `🔒 <b>Wajib Join Channel</b>\n\n` +
+    `Untuk melanjutkan, join channel dulu ya.\n` +
+    `Setelah join, klik <b>🔄 Saya sudah join</b>.`;
+
+  // kalau messageId ada, edit. kalau tidak ada, kirim baru
+  if (messageId) {
+    await tgEditMessage(chatId, messageId, text, { reply_markup: kb });
+  } else {
+    const sent = await tgSendMessage(chatId, text, { reply_markup: kb });
+    const newId = sent?.result?.message_id || sent?.message_id;
+    if (newId) setMainMsgId(chatId, newId);
   }
 }
 
@@ -1141,6 +1169,29 @@ if (messageId && cb.message?.text) {
       return;
     }
 
+// ===== FORCE JOIN GATE (kunci fitur) =====
+if (FORCE_CHANNEL) {
+  const userId = cb.from?.id;
+  const okJoin = await isMemberOfForceChannel(userId);
+
+  // izinkan hanya tombol khusus join-check + NOOP + NAV_HOME
+  const allowed = data === "CHECK_JOIN" || data === "NOOP" || data === "NAV_HOME";
+
+  if (!okJoin && !allowed) {
+    await tgAnswerCallback(cb.id, "Wajib join channel dulu ya.", true);
+
+    // tampilkan prompt join di MAIN message (bukan di pesan foto)
+    const mid = getMainMsgId(chatId) || messageId;
+    await renderForceJoin(chatId, mid, admin);
+
+    // kalau tombol dipencet dari pesan foto, hapus foto biar ga numpuk
+    if (!cb.message?.text) {
+      try { await tgDeleteMessage(chatId, messageId); } catch {}
+    }
+    return;
+  }
+}
+    
     /* ===== NAV ===== */
     if (data === "NAV_HOME") {
   await tgAnswerCallback(cb.id, "OK", false);
