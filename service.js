@@ -1250,14 +1250,6 @@ if (messageId && cb.message?.text) {
       return;
     }
 
-    if (data === "BACK_CAT") {
-  await tgAnswerCallback(cb.id, "OK", false);
-
-  const mid = getMainMsgId(chatId) || messageId;
-  await showCategoriesEdit(chatId, mid);
-  return;
-}
-
     if (data.startsWith("BACK_PROD_")) {
   const parts = data.split("_"); // BACK_PROD_{cat}_{page}
   const cat = parts[2];
@@ -1268,34 +1260,23 @@ if (messageId && cb.message?.text) {
   const mid = getMainMsgId(chatId);
   if (!mid) {
     await tgSendMessage(chatId, "Ketik /start untuk membuka menu.");
-    // hapus preview kalau ini pesan foto
     if (!cb.message?.text) {
       try { await tgDeleteMessage(chatId, messageId); } catch {}
     }
     return;
   }
 
-  // tampilkan kembali list produk di MAIN message
+  // balik ke list produk di MAIN message
   await showProducts(chatId, cat, mid, page);
 
-  // hapus pesan preview (biasanya foto) biar nggak numpuk
+  // hapus preview (foto) biar nggak numpuk
   if (!cb.message?.text) {
     try { await tgDeleteMessage(chatId, messageId); } catch {}
   }
 
   return;
 }
-
-  // Render list produk ke MAIN message
-  await showProducts(chatId, cat, mid, page);
-
-  // Hapus preview foto (bukan main)
-  if (!cb.message?.text) {
-    try { await tgDeleteMessage(chatId, messageId); } catch {}
-  }
-
-  return;
-}
+  
     if (data.startsWith("VIEW_")) {
   const parts = data.split("_");
   const cat = parts[1];
