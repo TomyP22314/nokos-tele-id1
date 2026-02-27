@@ -635,9 +635,9 @@ async function showProducts(chatId, cat, messageId, page = 1) {
 
   // tombol bawah
   keyboard.push([
-    { text: "⬅️ Back", callback_data: "BACK_CAT" },
-    { text: "🏠 Home", callback_data: "NAV_HOME" },
-  ]);
+  { text: "⬅️ Back", callback_data: "NAV_CAT" },   // ✅ balik ke kategori
+  { text: "🏠 Home", callback_data: "NAV_HOME" },
+]);
 
   await tgEditMessage(chatId, messageId, header, {
     reply_markup: { inline_keyboard: keyboard },
@@ -1157,10 +1157,17 @@ if (messageId && cb.message?.text) {
 }
 
     if (data === "NAV_CAT") {
-      await tgAnswerCallback(cb.id, "OK", false);
-      await showCategoriesEdit(chatId, messageId);
-      return;
-    }
+  await tgAnswerCallback(cb.id, "OK", false);
+
+  const mid = getMainMsgId(chatId) || messageId;   // ✅ pastikan pakai main message
+  await showCategoriesEdit(chatId, mid);
+
+  // kalau tombol ditekan dari pesan foto, hapus fotonya biar nggak numpuk
+  if (!cb.message?.text) {
+    try { await tgDeleteMessage(chatId, messageId); } catch {}
+  }
+  return;
+}
 
     if (data === "NAV_SEARCH") {
   await tgAnswerCallback(cb.id, "OK", false);
