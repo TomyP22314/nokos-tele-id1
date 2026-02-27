@@ -639,7 +639,7 @@ async function showProducts(chatId, cat, messageId, page = 1) {
     const stok = stockBadge(p.stock);
     return [
       {
-        text: `${name} • ${stok} - ${rupiah(p.price)}`,
+        text: `${shorten(p.name, 24)}\n${rupiah(p.price)} • ${stok}`,
         callback_data: `VIEW_${cat}_${p.id}_${page}`,
       },
     ];
