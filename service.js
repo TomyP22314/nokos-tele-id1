@@ -1125,17 +1125,34 @@ if (messageId && cb.message?.text) {
 
     /* ===== NAV ===== */
     if (data === "NAV_HOME") {
-  await tgAnswerCallback(cb.id, "", false);
+  await tgAnswerCallback(cb.id, "OK", false);
 
-  const mid = getMainMsgId(chatId) || messageId;
+  const mid = getMainMsgId(chatId);
+
+  // Kalau belum ada main msg, bikin baru
+  if (!mid) {
+    const sent = await tgSendMessage(chatId, buildWelcomeText(), {
+      reply_markup: mainMenuInline(admin),
+    });
+    const newId = sent?.result?.message_id || sent?.message_id;
+    if (newId) setMainMsgId(chatId, newId);
+
+    // Hapus preview foto kalau tombol ditekan dari preview
+    if (!cb.message?.text) {
+      try { await tgDeleteMessage(chatId, messageId); } catch {}
+    }
+    return;
+  }
+
+  // Edit MAIN message jadi Home
   await tgEditMessage(chatId, mid, buildWelcomeText(), {
     reply_markup: mainMenuInline(admin),
   });
 
-  // opsional: hapus pesan preview foto
-  try {
-    await tgDeleteMessage(chatId, messageId);
-  } catch {}
+  // Kalau tombol ditekan dari pesan foto (preview), hapus fotonya saja
+  if (!cb.message?.text) {
+    try { await tgDeleteMessage(chatId, messageId); } catch {}
+  }
 
   return;
 }
@@ -1244,25 +1261,33 @@ if (messageId && cb.message?.text) {
 }
 
     if (data.startsWith("BACK_PROD_")) {
-  // BACK_PROD_{cat}_{page}
-  const parts = data.split("_");
+  const parts = data.split("_"); // BACK_PROD_{cat}_{page}
   const cat = parts[2];
   const page = Number(parts[3] || 1);
 
   await tgAnswerCallback(cb.id, "OK", false);
 
-  // penting: render ke MAIN message (bukan message foto)
-  const mid = getMainMsgId(chatId) || messageId;
+  const mid = getMainMsgId(chatId);
+  if (!mid) {
+    // Kalau main msg hilang, paksa /start agar rebuild
+    await tgSendMessage(chatId, "Ketik /start untuk membuka menu.");
+    // Hapus preview agar tidak nyangkut
+    if (!cb.message?.text) {
+      try { await tgDeleteMessage(chatId, messageId); } catch {}
+    }
+    return;
+  }
+
+  // Render list produk ke MAIN message
   await showProducts(chatId, cat, mid, page);
 
-  // opsional: hapus pesan preview foto biar tidak numpuk
-  try {
-    await tgDeleteMessage(chatId, messageId);
-  } catch {}
+  // Hapus preview foto (bukan main)
+  if (!cb.message?.text) {
+    try { await tgDeleteMessage(chatId, messageId); } catch {}
+  }
 
   return;
-    }
-
+}
     if (data.startsWith("VIEW_")) {
   const parts = data.split("_");
   const cat = parts[1];
