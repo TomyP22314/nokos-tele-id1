@@ -621,7 +621,7 @@ async function showProducts(chatId, cat, messageId, page = 1) {
     return [
       {
         text: `${name} • ${stok} - ${rupiah(p.price)}`,
-        callback_data: `VIEW_${cat}_${p.id}`,
+        callback_data: `VIEW_${cat}_${p.id}_${page}`,
       },
     ];
   });
@@ -644,44 +644,42 @@ async function showProducts(chatId, cat, messageId, page = 1) {
   });
 }
 
-async function showProductPreview(chatId, messageId, cat, id) {
+async function showProductPreview(chatId, messageId, cat, id, page = 1) {
   const products = await getProducts(cat);
   const p = products.find((x) => String(x.id) === String(id));
 
   if (!p) {
     await tgEditMessage(chatId, messageId, "❌ Produk tidak ditemukan.", {
-      reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "BACK_CAT" }]] },
+      reply_markup: { inline_keyboard: [[{ text: "⬅ Back", callback_data: "BACK_CAT" }]] },
     });
     return;
   }
 
   const caption =
     `🧾 <b>PREVIEW PRODUK</b>\n` +
-    `────────────────────────\n` +
+    `────────────────────\n` +
     `📦 <b>${escHtml(p.name)}</b>\n` +
     (p.desc ? `📝 ${escHtml(p.desc)}\n` : "") +
     `📦 Stock: <b>${escHtml(stockBadge(p.stock))}</b>\n` +
     `💰 Harga: <b>${rupiah(p.price)}</b>\n` +
     (p.link ? `🔗 Link:\n${escHtml(p.link)}\n` : "");
 
-  const backPage = 1; // kalau nanti kamu mau simpan page, tinggal ganti nilainya
-    const kb = {
-  inline_keyboard: [
-    [{ text: "✅ Beli Sekarang", callback_data: `BUY_${cat}_${p.id}` }],
-    [{ text: "⬅ Back", callback_data: `BACK_TO_LIST_${cat}_1` }], // page default 1
-    [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
-  ],
-};
+  const kb = {
+    inline_keyboard: [
+      [{ text: "✅ Beli Sekarang", callback_data: `BUY_${cat}_${p.id}` }],
+      [{ text: "⬅ Back", callback_data: `BACK_PROD_${cat}_${page}` }], // ✅ balik list produk
+      [{ text: "🏠 Home", callback_data: "NAV_HOME" }],
+    ],
+  };
 
-  // kalau ada URL gambar -> kirim foto (hapus dulu pesan list biar gak numpuk)
+  // kalau ada image url -> kirim foto
   if (p.image && /^https?:\/\//i.test(p.image)) {
-    try { await tgDeleteMessage(chatId, messages); } catch {}
     await tgSendPhoto(chatId, p.image, caption, { reply_markup: kb });
     return;
   }
 
-  // kalau tidak ada gambar -> tampilkan text saja
-  await tgEditMessage(chatId, messageId, caption + "\n<i>(Gambar belum tersedia)</i>", {
+  // kalau tidak ada gambar -> edit message
+  await tgEditMessage(chatId, messageId, caption + "\n\n<i>(Gambar belum tersedia)</i>", {
     reply_markup: kb,
   });
 }
@@ -1269,14 +1267,24 @@ if (messageId && cb.message?.text) {
 
   const mid = getMainMsgId(chatId);
   if (!mid) {
-    // Kalau main msg hilang, paksa /start agar rebuild
     await tgSendMessage(chatId, "Ketik /start untuk membuka menu.");
-    // Hapus preview agar tidak nyangkut
+    // hapus preview kalau ini pesan foto
     if (!cb.message?.text) {
       try { await tgDeleteMessage(chatId, messageId); } catch {}
     }
     return;
   }
+
+  // tampilkan kembali list produk di MAIN message
+  await showProducts(chatId, cat, mid, page);
+
+  // hapus pesan preview (biasanya foto) biar nggak numpuk
+  if (!cb.message?.text) {
+    try { await tgDeleteMessage(chatId, messageId); } catch {}
+  }
+
+  return;
+}
 
   // Render list produk ke MAIN message
   await showProducts(chatId, cat, mid, page);
@@ -1292,11 +1300,12 @@ if (messageId && cb.message?.text) {
   const parts = data.split("_");
   const cat = parts[1];
   const id = parts[2];
+  const page = Number(parts[3] || 1);
 
   await tgAnswerCallback(cb.id, "Menampilkan preview...", false);
-  await showProductPreview(chatId, messageId, cat, id);
+  await showProductPreview(chatId, messageId, cat, id, page); // ✅ lempar page
   return;
-    }
+}
 
     /* ===== BUY ===== */
     if (data.startsWith("BUY_")) {
